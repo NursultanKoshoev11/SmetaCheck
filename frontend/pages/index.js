@@ -1,0 +1,1 @@
+export default function Home(){return <main className="page"><h1>SmetaCheck KG</h1><p>Modern business dashboard.</p><p><a href="/login">Login</a> · <a href="/pricing">Pricing</a> · <a href="/dashboard">Dashboard</a></p></main>}
