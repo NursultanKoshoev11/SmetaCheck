@@ -1,0 +1,2 @@
+import Nav from '../components/Nav';
+export default function Chat(){return <main className="page"><Nav/><section className="panel"><p className="eyebrow">Report AI</p><h1>Ask about a report</h1><p>Future AI chat will answer only from parsed estimate rows, issues and generated report data.</p><div className="card">Example: What should I fix first?</div></section></main>}
