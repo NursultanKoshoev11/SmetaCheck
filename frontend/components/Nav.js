@@ -1,0 +1,1 @@
+export default function Nav(){return <nav className="nav"><a className="brand" href="/">SmetaCheck</a><div><a href="/pricing">Pricing</a><a href="/upload">Upload</a><a href="/dashboard">Dashboard</a><a className="pill" href="/login">Sign in</a></div></nav>}
