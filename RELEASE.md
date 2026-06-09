@@ -1,17 +1,20 @@
-# SmetaCheck KG Release Notes
+# SmetaCheck KG Release
 
-## Current release status
+Status: smoke-test only.
 
-This repository is not ready for public production release yet.
-
-It is ready for infrastructure smoke testing:
-- Docker Compose starts core services.
-- API exposes health endpoint.
-- Frontend has a landing page.
+Ready:
+- Docker Compose core stack.
+- API health endpoint.
+- Frontend landing page.
 - Worker and bot processes start.
 
-## Blockers before public release
+Not ready:
+- Real upload pipeline.
+- Worker processing.
+- XLSX normalization.
+- Issue persistence.
+- HTML/PDF reports.
+- Telegram user flow.
+- Auth and organization roles.
 
-1. Real upload endpoint must save the file and create a database record.
-2. Worker must process queued estimates.
-3. XLSX
+Do not expose this build to public users yet.
