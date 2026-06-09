@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    env_file: .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+  redis:
+    image: redis:7-alpine
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    env_file: .env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+volumes:
+  pgdata:
