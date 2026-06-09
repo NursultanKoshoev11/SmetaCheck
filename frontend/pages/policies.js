@@ -1,0 +1,2 @@
+import Nav from '../components/Nav';
+export default function Policies(){return <main className="page"><Nav/><section className="panel"><p className="eyebrow">Policies</p><h1>Company policies</h1><div className="grid"><div className="card">Service terms</div><div className="card">Data policy</div><div className="card">Payment policy</div><div className="card">Cookie notice</div></div></section></main>}
