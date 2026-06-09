@@ -1,1 +1,1 @@
-export default function Dashboard(){return <main className="wrap"><h1>Dashboard</h1><p>Checks, reports and company activity will appear here.</p></main>}
+export default function Dashboard(){return <main className="page"><section className="card"><h1>Dashboard</h1><p>Track uploads, active plan, reports and team activity.</p><div className="grid"><article><b>12</b><p>Reports</p></article><article><b>4</b><p>High risks</p></article><article><b>Pro</b><p>Plan</p></article></div><p><a href="/upload">Upload new file</a></p></section></main>}
