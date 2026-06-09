@@ -1,0 +1,2 @@
+import Nav from '../components/Nav';
+export default function Compare(){return <main className="page"><Nav/><section className="panel"><p className="eyebrow">Compare</p><h1>Compare estimates</h1><p>Upload two estimates later to detect added rows, removed rows and cost changes.</p><div className="grid"><div className="card">Base estimate</div><div className="card">New estimate</div><div className="card">Change report</div></div></section></main>}
