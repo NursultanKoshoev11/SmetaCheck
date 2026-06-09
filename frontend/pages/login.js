@@ -1,1 +1,1 @@
-export default function Login(){return <main className="wrap"><h1>Login</h1><p>Email, Google and Telegram sign in will be connected here.</p></main>}
+export default function Login(){return <main className="page"><section className="card"><h1>Welcome back</h1><p>Sign in to manage your plan and reports.</p><input placeholder="Email"/><input placeholder="Password" type="password"/><button>Email login</button><button>Continue with Google</button><button>Continue with Telegram</button><p><a href="/pricing">View plans</a></p></section></main>}
