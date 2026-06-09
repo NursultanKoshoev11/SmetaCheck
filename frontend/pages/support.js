@@ -1,0 +1,2 @@
+import Nav from '../components/Nav';
+export default function Support(){return <main className="page"><Nav/><section className="panel"><p className="eyebrow">Support</p><h1>Help center</h1><p>Contact support, report a bug or request help with an estimate report.</p><div className="grid"><div className="card">Email support</div><div className="card">Telegram support</div><div className="card">Bug report</div></div></section></main>}
