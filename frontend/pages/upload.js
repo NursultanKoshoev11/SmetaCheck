@@ -1,1 +1,1 @@
-export default function Upload(){return <main className="wrap"><h1>Upload estimate</h1><p>Upload Excel, PDF or Word estimates for validation.</p></main>}
+export default function Upload(){return <main className="page"><section className="card"><h1>Upload</h1><p>Select a document and start processing.</p><input type="file"/><button>Start</button><p>Results will appear in the dashboard.</p></section></main>}
