@@ -1,22 +1,10 @@
 # SmetaCheck SaaS readiness
 
 ## Added UI
-- Landing components
-- Pricing page
-- Billing page
-- Upload page
-- Dashboard page
-- Reports page
-- Admin page
-- Support page
-- Compare page
-- Report chat page
-- Policies page
+Landing, pricing, billing, upload, dashboard, reports, admin, support, compare, report chat, policies.
 
 ## Added backend foundation
-- Auth session model
-- Social verifier contract
-- Billing plan limits
-- Upload plan gate
-- File intake contract
-- Job lifecycle
+Auth session model, social verifier contract, plan limits, upload gate, file intake contract, job lifecycle, report export, notification interface, admin summary, report history.
+
+## Still not complete
+Real email login, real Google and Telegram verification, database-backed sessions
