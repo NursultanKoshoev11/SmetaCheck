@@ -16,6 +16,3 @@ func Run(){
  s:=storage.New(pool)
  mux:=http.NewServeMux()
  mux.HandleFunc("/health",Health)
- mux.HandleFunc("/v1/auth/register",AuthRegister)
- mux.HandleFunc("/v1/auth/login",AuthLogin)
- mux.HandleFunc("/v1/estimates
