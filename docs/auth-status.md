@@ -1,18 +1,18 @@
 # Auth Status
 
 Implemented:
-- user auth migration
+- auth user migration
 - email/password DTO
 - bcrypt password hashing
 - email registration service contract
 - Google login DTO and provider interface
-- Telegram login DTO and temporary verifier shell
+- Telegram login DTO and verifier shell
 
-Not production complete yet:
+Blocked before production:
 - JWT issuing is not wired
 - HTTP auth endpoints are not wired
-- Google id token verification is not implemented
-- Telegram payload verification needs full HMAC check
-- storage SQL methods for auth were blocked by connector and must be added locally
+- Google ID token verification is not implemented
+- Telegram verifier must be replaced with full HMAC validation
+- auth storage SQL methods must be added locally
 
-Release gate
+Release gate: do not enable public login until all blocked items are closed.
