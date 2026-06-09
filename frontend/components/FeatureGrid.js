@@ -1,0 +1,1 @@
+const items=['Exact parser first','AI report writer','Charts and risk score','Telegram alerts','Team workspace','PDF export'];export default function FeatureGrid(){return <section className="grid">{items.map(x=><article className="card" key={x}><span>✦</span><h3>{x}</h3><p>Built for clean review workflows and fast decisions.</p></article>)}</section>}
