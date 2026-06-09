@@ -1,1 +1,1 @@
-export default function Reports(){return <main className="wrap"><h1>Reports</h1><p>HTML and PDF estimate reports will be listed here.</p></main>}
+export default function Reports(){return <main className="page"><section className="card"><h1>Reports</h1><p>Report history, charts and export files.</p><div className="grid"><article><b>Summary</b><p>Overview</p></article><article><b>Charts</b><p>Visual data</p></article><article><b>Export</b><p>PDF file</p></article></div><p><a href="/dashboard">Back</a></p></section></main>}
