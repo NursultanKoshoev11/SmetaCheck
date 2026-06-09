@@ -1,1 +1,1 @@
-export default function Home(){return <main><h1>SmetaCheck KG</h1><p>Upload estimates, find risks, generate reports.</p></main>}
+export default function Home(){return <main className="wrap"><h1>SmetaCheck KG</h1><p>Upload estimates, find risks, generate reports.</p><nav><a href="/upload">Upload</a> | <a href="/dashboard">Dashboard</a> | <a href="/reports">Reports</a> | <a href="/login">Login</a> | <a href="/admin">Admin</a></nav></main>}
