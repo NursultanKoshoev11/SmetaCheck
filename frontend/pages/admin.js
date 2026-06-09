@@ -1,1 +1,1 @@
-export default function Admin(){return <main className="wrap"><h1>Admin</h1><p>Users, checks, parser errors and audit events will be managed here.</p></main>}
+export default function Admin(){return <main className="page"><section className="card"><h1>Admin</h1><p>Manage users, plans, reports and system activity.</p><div className="grid"><article><b>Users</b><p>Accounts</p></article><article><b>Plans</b><p>Billing</p></article><article><b>Audit</b><p>Events</p></article></div><p><a href="/dashboard">Back</a></p></section></main>}
