@@ -1,0 +1,1 @@
+const plans=[['Free','0','3 checks'],['Pro','29','100 checks'],['Company','Custom','Team control']];export default function PricingCards(){return <section className="plans">{plans.map(p=><article className="card plan" key={p[0]}><p>{p[0]}</p><h2>{p[1]}</h2><span>{p[2]}</span><a className="btn small" href="/login">Choose</a></article>)}</section>}
