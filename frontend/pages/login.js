@@ -1,1 +1,25 @@
-export default function Login(){return <main className="page"><section className="card"><h1>Welcome back</h1><p>Sign in to manage your plan and reports.</p><input placeholder="Email"/><input placeholder="Password" type="password"/><button>Email login</button><button>Continue with Google</button><button>Continue with Telegram</button><p><a href="/pricing">View plans</a></p></section></main>}
+import Nav from '../components/Nav';
+import Footer from '../components/Footer';
+
+export default function Login(){
+  return (
+    <main className="page">
+      <Nav/>
+      <section className="authShell">
+        <div>
+          <p className="eyebrow">Account</p>
+          <h1>Sign in to your estimate review workspace.</h1>
+          <p>Manage uploads, reports, comparison history, and team review activity from one place.</p>
+        </div>
+        <form className="authCard">
+          <label>Email<input placeholder="name@company.com" type="email" /></label>
+          <label>Password<input placeholder="Your password" type="password" /></label>
+          <button className="btn" type="button">Sign in</button>
+          <button className="btn secondary" type="button">Continue with Google</button>
+          <p>New here? <a href="/pricing">Choose a plan</a></p>
+        </form>
+      </section>
+      <Footer/>
+    </main>
+  )
+}
