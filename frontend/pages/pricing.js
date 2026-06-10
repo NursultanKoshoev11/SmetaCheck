@@ -1,1 +1,21 @@
-export default function Pricing(){return <main className="page"><section className="card"><h1>Pricing</h1><p>Choose a plan before uploading files.</p><div className="grid"><article><h2>Free</h2><p>3 checks per month</p></article><article><h2>Pro</h2><p>For active specialists</p></article><article><h2>Company</h2><p>For teams and managers</p></article></div><p><a href="/login">Continue</a></p></section></main>}
+import Nav from '../components/Nav';
+import PricingCards from '../components/PricingCards';
+import Footer from '../components/Footer';
+
+export default function Pricing(){
+  return (
+    <main className="page">
+      <Nav/>
+      <section className="pageHero compact">
+        <p className="eyebrow">Pricing</p>
+        <h1>Simple plans for estimate review teams.</h1>
+        <p>Begin with a small workflow, then upgrade when reports and team collaboration become part of daily work.</p>
+      </section>
+      <PricingCards/>
+      <section className="workspace">
+        <div className="card"><h2>Need a company plan?</h2><p>Use the support page to request a team setup, private onboarding, or custom report workflow.</p><a className="btn" href="/support">Contact support</a></div>
+      </section>
+      <Footer/>
+    </main>
+  )
+}
