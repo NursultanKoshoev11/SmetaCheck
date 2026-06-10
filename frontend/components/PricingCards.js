@@ -1,1 +1,27 @@
-const plans=[['Free','0','3 checks'],['Pro','29','100 checks'],['Company','Custom','Team control']];export default function PricingCards(){return <section className="plans">{plans.map(p=><article className="card plan" key={p[0]}><p>{p[0]}</p><h2>{p[1]}</h2><span>{p[2]}</span><a className="btn small" href="/login">Choose</a></article>)}</section>}
+const plans = [
+  ['Free', '$0', 'For testing the first estimate review', ['3 checks per month', 'Basic report preview', 'Single user']],
+  ['Pro', '$29', 'For active builders and estimators', ['100 checks per month', 'PDF export', 'Version comparison']],
+  ['Company', 'Custom', 'For teams and construction companies', ['Team dashboard', 'Priority workflow', 'Custom onboarding']],
+]
+
+export default function PricingCards(){
+  return (
+    <section className="section">
+      <div className="sectionHeader">
+        <p className="eyebrow">Pricing</p>
+        <h2>Start small. Upgrade when the workflow is proven.</h2>
+      </div>
+      <div className="grid plans">
+        {plans.map(([name,price,description,features]) => (
+          <article className="card plan" key={name}>
+            <p className="planName">{name}</p>
+            <h3>{price}</h3>
+            <p>{description}</p>
+            <ul>{features.map(item => <li key={item}>{item}</li>)}</ul>
+            <a className="btn secondary" href="/login">Choose plan</a>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
