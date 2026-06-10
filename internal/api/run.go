@@ -17,6 +17,9 @@ func Run() {
 	mux.HandleFunc("/ready", Ready)
 	mux.HandleFunc("/v1/auth/register", requireMethod(http.MethodPost, AuthRegister))
 	mux.HandleFunc("/v1/auth/login", requireMethod(http.MethodPost, AuthLogin))
+	mux.HandleFunc("/v1/estimates", EstimateList)
+	mux.HandleFunc("/v1/estimates/upload", requireMethod(http.MethodPost, EstimateUpload))
+	mux.HandleFunc("/v1/estimates/", EstimateDetailRouter)
 
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
