@@ -1,17 +1,38 @@
 package api
 
-import(
- "log"
- "net/http"
- "os"
+import (
+	"log"
+	"net/http"
+	"os"
+	"time"
 )
 
-func Run(){
- mux:=http.NewServeMux()
- mux.HandleFunc("/health",Health)
- mux.HandleFunc("/v1/auth/register",AuthRegister)
- mux.HandleFunc("/v1/auth/login",AuthLogin)
- addr:=os.Getenv("HTTP_ADDR")
- if addr==""{addr=":8080"}
- log.Fatal(http.ListenAndServe(addr,mux))
+func Run() {
+	if err := validateProductionConfig(); err != nil {
+		log.Fatalf("configuration error: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", Health)
+	mux.HandleFunc("/ready", Ready)
+	mux.HandleFunc("/v1/auth/register", requireMethod(http.MethodPost, AuthRegister))
+	mux.HandleFunc("/v1/auth/login", requireMethod(http.MethodPost, AuthLogin))
+
+	addr := os.Getenv("HTTP_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+
+	server := &http.Server{
+		Addr:              addr,
+		Handler:           recoverPanic(requestID(securityHeaders(cors(maxBodyBytes(mux))))),
+		ReadHeaderTimeout: envDuration("SERVER_READ_HEADER_TIMEOUT", 5*time.Second),
+		ReadTimeout:       envDuration("SERVER_READ_TIMEOUT", 30*time.Second),
+		WriteTimeout:      envDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
+		IdleTimeout:       envDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
+		MaxHeaderBytes:    1 << 20,
+	}
+
+	log.Printf("smetacheck api listening on %s", addr)
+	log.Fatal(server.ListenAndServe())
 }
