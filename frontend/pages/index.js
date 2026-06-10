@@ -1,1 +1,10 @@
-import Nav from '../components/Nav';import Hero from '../components/Hero';import FeatureGrid from '../components/FeatureGrid';import PricingCards from '../components/PricingCards';import ReportPreview from '../components/ReportPreview';export default function Home(){return <main className="page"><Nav/><Hero/><FeatureGrid/><ReportPreview/><PricingCards/></main>}
+import Nav from '../components/Nav';
+import Hero from '../components/Hero';
+import FeatureGrid from '../components/FeatureGrid';
+import PricingCards from '../components/PricingCards';
+import ReportPreview from '../components/ReportPreview';
+import Footer from '../components/Footer';
+
+export default function Home(){
+  return <main className="page"><Nav/><Hero/><FeatureGrid/><ReportPreview/><PricingCards/><Footer/></main>
+}
