@@ -2,20 +2,77 @@ services:
   postgres:
     image: postgres:16-alpine
     env_file: .env
+    restart: unless-stopped
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./deploy/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-smetacheck} -d $${POSTGRES_DB:-smetacheck}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     env_file: .env
+    restart: unless-stopped
     ports:
       - "8080:8080"
+    volumes:
+      - uploads:/var/lib/smetacheck/uploads
+      - reports:/var/lib/smetacheck/reports
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - uploads:/var/lib/smetacheck/uploads
+      - reports:/var/lib/smetacheck/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  redisdata:
+  uploads:
+  reports:
