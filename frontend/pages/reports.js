@@ -15,15 +15,10 @@ export default function Reports(){
     try{
       const response = await fetch(`${API_BASE}/v1/estimates`);
       const data = await response.json();
-      if(!response.ok){
-        throw new Error(data.error || 'Cannot load reports');
-      }
+      if(!response.ok){ throw new Error(data.error || 'Не удалось загрузить отчёты'); }
       setEstimates(data.estimates || []);
-    }catch(err){
-      setError(err.message || 'Cannot load reports');
-    }finally{
-      setLoading(false);
-    }
+    }catch(err){ setError(err.message || 'Не удалось загрузить отчёты'); }
+    finally{ setLoading(false); }
   }
 
   useEffect(()=>{ loadReports(); }, []);
@@ -32,18 +27,18 @@ export default function Reports(){
     <main className="page">
       <Nav/>
       <section className="pageHero compact">
-        <p className="eyebrow">Reports</p>
-        <h1>Clear reports for owners and construction teams.</h1>
-        <p>Review uploaded estimate summaries, scores, findings, and downloadable report files from the API.</p>
+        <p className="eyebrow">Отчёты</p>
+        <h1>Понятные отчёты по каждой проверенной смете.</h1>
+        <p>История проверок помогает быстрее объяснить бюджет, спорные строки и следующие действия.</p>
       </section>
       <section className="workspace">
-        <div className="buttonRow"><button className="btn secondary" type="button" onClick={loadReports}>Refresh</button><a className="btn" href="/upload">Upload new file</a></div>
-        {loading && <div className="card"><p>Loading reports...</p></div>}
-        {error && <div className="card"><h2>API error</h2><p>{error}</p><p>Check that the Go API is running on {API_BASE}.</p></div>}
-        {!loading && !error && estimates.length === 0 && <div className="card"><h2>No reports yet</h2><p>Upload your first estimate to create a report.</p><a className="btn" href="/upload">Upload estimate</a></div>}
+        <div className="buttonRow"><button className="btn secondary" type="button" onClick={loadReports}>Обновить</button><a className="btn" href="/upload">Загрузить новую смету</a></div>
+        {loading && <div className="card"><p>Загружаем отчёты...</p></div>}
+        {error && <div className="card"><h2>Ошибка API</h2><p>{error}</p><p>Проверьте, что Go API запущен на {API_BASE}.</p></div>}
+        {!loading && !error && estimates.length === 0 && <div className="card"><h2>Отчётов пока нет</h2><p>Загрузите первую смету, чтобы получить отчёт.</p><a className="btn" href="/upload">Загрузить смету</a></div>}
         {!loading && !error && estimates.length > 0 && <div className="reportTable">
-          <div className="tableHead"><span>ID</span><span>Name</span><span>Score</span><span>Status</span><span>Report</span></div>
-          {estimates.map((estimate) => <div className="tableRow" key={estimate.id}><span>{estimate.id}</span><b>{estimate.file_name}</b><strong>{estimate.score}</strong><em>{estimate.status}</em><a href={`${API_BASE}/v1/estimates/${estimate.id}/report`}>Download</a></div>)}
+          <div className="tableHead"><span>ID</span><span>Файл</span><span>Оценка</span><span>Статус</span><span>Отчёт</span></div>
+          {estimates.map((estimate) => <div className="tableRow" key={estimate.id}><span>{estimate.id}</span><b>{estimate.file_name}</b><strong>{estimate.score}</strong><em>{estimate.status}</em><a href={`${API_BASE}/v1/estimates/${estimate.id}/report`}>Скачать</a></div>)}
         </div>}
       </section>
       <Footer/>
