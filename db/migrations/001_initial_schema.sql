@@ -1,10 +1,8 @@
 -- SmetaCheck KG initial production schema
 -- Apply with: psql "$DATABASE_URL" -f db/migrations/001_initial_schema.sql
 
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id TEXT PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     full_name TEXT,
@@ -14,8 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE TABLE IF NOT EXISTS projects (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     location TEXT,
     description TEXT,
@@ -24,9 +22,9 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 
 CREATE TABLE IF NOT EXISTS estimates (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
-    project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+    id TEXT PRIMARY KEY,
+    owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
     file_name TEXT NOT NULL,
     file_path TEXT NOT NULL,
     report_path TEXT,
@@ -41,8 +39,8 @@ CREATE TABLE IF NOT EXISTS estimates (
 );
 
 CREATE TABLE IF NOT EXISTS estimate_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    estimate_id UUID NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY,
+    estimate_id TEXT NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
     row_number INTEGER NOT NULL,
     name TEXT,
     unit TEXT,
@@ -53,8 +51,8 @@ CREATE TABLE IF NOT EXISTS estimate_items (
 );
 
 CREATE TABLE IF NOT EXISTS findings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    estimate_id UUID NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
+    id TEXT PRIMARY KEY,
+    estimate_id TEXT NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     severity TEXT NOT NULL CHECK (severity IN ('Info','Low','Medium','High')),
     detail TEXT NOT NULL,
@@ -62,8 +60,8 @@ CREATE TABLE IF NOT EXISTS findings (
 );
 
 CREATE TABLE IF NOT EXISTS compare_results (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    id TEXT PRIMARY KEY,
+    owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     base_file_name TEXT NOT NULL,
     new_file_name TEXT NOT NULL,
     base_total NUMERIC(16,2) NOT NULL DEFAULT 0,
@@ -77,8 +75,8 @@ CREATE TABLE IF NOT EXISTS compare_results (
 );
 
 CREATE TABLE IF NOT EXISTS audit_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    id TEXT PRIMARY KEY,
+    user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
     action TEXT NOT NULL,
     resource_type TEXT,
     resource_id TEXT,
