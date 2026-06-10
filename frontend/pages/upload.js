@@ -4,6 +4,12 @@ import Footer from '../components/Footer';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
 
+function fileSizeLabel(file){
+  if(!file) return '';
+  if(file.size > 1024 * 1024) return `${(file.size / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(file.size / 1024))} KB`;
+}
+
 export default function Upload(){
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState('idle');
@@ -25,9 +31,7 @@ export default function Upload(){
     try{
       const response = await fetch(`${API_BASE}/v1/estimates/upload`, {method:'POST', body:formData});
       const data = await response.json();
-      if(!response.ok){
-        throw new Error(data.error || 'Не удалось загрузить файл');
-      }
+      if(!response.ok){ throw new Error(data.error || 'Не удалось загрузить файл'); }
       setResult(data);
       setStatus('done');
       setMessage('Смета загружена. Отчёт и данные проверки созданы.');
@@ -43,17 +47,24 @@ export default function Upload(){
       <section className="pageHero compact">
         <p className="eyebrow">Проверка сметы</p>
         <h1>Загрузите смету и получите понятный отчёт для обсуждения.</h1>
-        <p>Подходит для владельцев домов, прорабов, сметчиков и строительных компаний. Начните с Excel или PDF файла, который уже есть у вас.</p>
+        <p>Подходит для владельцев домов, прорабов, сметчиков и строительных компаний. Лучше всего работают XLSX, XLSM и CSV файлы.</p>
       </section>
       <section className="workspace twoColumns">
-        <div className="uploadBox">
-          <div className="uploadIcon">+</div>
-          <h2>Добавьте файл сметы</h2>
-          <p>API для проверки: <b>{API_BASE}</b></p>
-          <input type="file" onChange={(event)=>setFile(event.target.files?.[0] || null)} />
+        <div className="uploadBox modernUploadShell">
+          <label className="modernUploadZone">
+            <input className="modernUploadInput" type="file" accept=".xlsx,.xlsm,.csv,.pdf" onChange={(event)=>setFile(event.target.files?.[0] || null)} />
+            <div className="modernUploadContent">
+              <div className="modernUploadIcon">↑</div>
+              <span className="modernUploadHint">XLSX · XLSM · CSV · PDF</span>
+              <h2>{file ? 'Файл выбран' : 'Выберите смету для проверки'}</h2>
+              <p>{file ? 'Можно запускать анализ. Система прочитает строки и подготовит замечания.' : 'Нажмите на область или перетащите файл сюда. Нативная кнопка скрыта, всё в стиле SmetaCheck.'}</p>
+            </div>
+          </label>
+          {file && <div className="modernFilePill"><div><b>{file.name}</b><br/><span>{fileSizeLabel(file)}</span></div><span>Готов к проверке</span></div>}
+          <div className="modernMiniGrid"><span>Проверка сумм</span><span>Поиск дублей</span><span>Отчёт для обсуждения</span></div>
           <button className="btn" type="button" onClick={submitUpload} disabled={status==='uploading'}>{status==='uploading' ? 'Проверяем...' : 'Начать проверку'}</button>
           {message && <p className={`statusText ${status}`}>{message}</p>}
-          {result && <div className="resultBox"><b>Проверка создана</b><p>ID: {result.id}</p><p>Оценка: {result.score}</p><a className="btn secondary" href={`/reports`}>Открыть отчёты</a></div>}
+          {result && <div className="resultBox"><b>Проверка создана</b><p>ID: {result.id}</p><p>Оценка: {result.score}/100 · строк: {result.items_count || 0}</p><a className="btn secondary" href={`/reports`}>Открыть отчёты</a></div>}
         </div>
         <div className="card checklistCard">
           <h2>Что получает клиент</h2>
