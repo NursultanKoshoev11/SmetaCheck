@@ -8,6 +8,30 @@ function money(value){
   return Number(value || 0).toLocaleString('ru-RU');
 }
 
+function fileSizeLabel(file){
+  if(!file) return '';
+  if(file.size > 1024 * 1024) return `${(file.size / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(file.size / 1024))} KB`;
+}
+
+function CompareUploadCard({number,title,text,file,onChange}){
+  return (
+    <div className="compareDrop">
+      <span className="compareNumber">{number}</span>
+      <label className="modernUploadZone">
+        <input className="modernUploadInput" type="file" accept=".xlsx,.xlsm,.csv,.pdf" onChange={(event)=>onChange(event.target.files?.[0] || null)} />
+        <div className="modernUploadContent">
+          <div className="modernUploadIcon">↥</div>
+          <span className="modernUploadHint">XLSX · CSV · PDF</span>
+          <h2>{file ? 'Файл выбран' : title}</h2>
+          <p>{file ? 'Версия готова к сравнению.' : text}</p>
+        </div>
+      </label>
+      {file && <div className="modernFilePill"><div><b>{file.name}</b><br/><span>{fileSizeLabel(file)}</span></div><span>Готово</span></div>}
+    </div>
+  )
+}
+
 export default function Compare(){
   const [baseFile, setBaseFile] = useState(null);
   const [newFile, setNewFile] = useState(null);
@@ -50,8 +74,8 @@ export default function Compare(){
         <p>Загрузите старую и новую версию. SmetaCheck покажет добавленные, удалённые и изменённые позиции.</p>
       </section>
       <section className="workspace twoColumns">
-        <div className="compareDrop"><span>01</span><h2>Исходная смета</h2><p>Первая версия документа.</p><input type="file" onChange={(event)=>setBaseFile(event.target.files?.[0] || null)} /></div>
-        <div className="compareDrop"><span>02</span><h2>Новая версия</h2><p>Обновлённая смета.</p><input type="file" onChange={(event)=>setNewFile(event.target.files?.[0] || null)} /></div>
+        <CompareUploadCard number="01" title="Исходная смета" text="Добавьте первую версию документа." file={baseFile} onChange={setBaseFile}/>
+        <CompareUploadCard number="02" title="Новая версия" text="Добавьте обновлённую смету." file={newFile} onChange={setNewFile}/>
       </section>
       <section className="workspace">
         <div className="card"><h2>Запустить сравнение</h2><p>Сервис сравнит позиции по названию и единице измерения, затем покажет разницу по суммам.</p><button className="btn" type="button" onClick={compareFiles} disabled={status==='loading'}>{status==='loading' ? 'Сравниваем...' : 'Сравнить сметы'}</button>{message && <p className={`statusText ${status}`}>{message}</p>}</div>
