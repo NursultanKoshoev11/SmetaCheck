@@ -6,14 +6,14 @@ export default function Nav(){
         <span>SmetaCheck KG</span>
       </a>
       <div className="navLinks">
-        <a href="/upload">Upload</a>
-        <a href="/dashboard">Dashboard</a>
-        <a href="/reports">Reports</a>
-        <a href="/compare">Compare</a>
-        <a href="/pricing">Pricing</a>
-        <a href="/support">Support</a>
+        <a href="/upload">Проверить смету</a>
+        <a href="/dashboard">Кабинет</a>
+        <a href="/reports">Отчёты</a>
+        <a href="/compare">Сравнение</a>
+        <a href="/pricing">Тарифы</a>
+        <a href="/support">Помощь</a>
       </div>
-      <a className="navAction" href="/login">Sign in</a>
+      <a className="navAction" href="/login">Войти</a>
     </nav>
   )
 }
