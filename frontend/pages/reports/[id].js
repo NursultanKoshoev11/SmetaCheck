@@ -44,6 +44,8 @@ export default function ReportDetail(){
     return stats;
   }, [estimate]);
 
+  const score = Math.max(0, Math.min(100, estimate?.score || 0));
+
   return (
     <main className="page">
       <Nav/>
@@ -53,16 +55,16 @@ export default function ReportDetail(){
         {error && <div className="card"><h2>Ошибка</h2><p>{error}</p><button className="btn" onClick={loadReport}>Повторить</button></div>}
         {!loading && !error && estimate && <>
           <div className="buttonRow"><button className="btn" type="button" onClick={()=>window.print()}>Сохранить как PDF</button><a className="btn secondary" href={`${API_BASE}/v1/estimates/${estimate.id}/report`}>Скачать TXT</a><a className="btn secondary" href="/reports">Все отчёты</a></div>
-          <div className="grid statsGrid">
-            <article className="statCard"><strong>{estimate.score}/100</strong><span>Оценка</span></article>
-            <article className="statCard"><strong>{estimate.items_count || 0}</strong><span>Строк</span></article>
-            <article className="statCard"><strong>{money(estimate.total_amount)}</strong><span>Сумма</span></article>
-            <article className="statCard"><strong>{(estimate.findings || []).length}</strong><span>Замечаний</span></article>
+          <div className="twoColumns">
+            <article className="card"><div className="scoreMeter" style={{'--score':`${score}%`}}><div><strong>{score}</strong><span>из 100</span></div></div><h2>Итоговая оценка</h2><p>Чем выше оценка, тем меньше автоматических замечаний найдено в смете.</p></article>
+            <article className="card aiExpertCard"><p className="eyebrow">AI Expert Review</p><h2>Вывод по смете</h2>{ai ? <><p><b>Риск: {ai.risk_level}</b> · Качество данных: <b>{ai.data_quality_score || score}/100</b></p><p>{ai.executive_brief}</p><p>{ai.recommendation}</p></> : <p>AI-вывод пока недоступен.</p>}</article>
           </div>
+          <div className="grid statsGrid"><article className="statCard"><strong>{estimate.items_count || 0}</strong><span>Строк</span></article><article className="statCard"><strong>{money(estimate.total_amount)}</strong><span>Сумма</span></article><article className="statCard"><strong>{(estimate.findings || []).length}</strong><span>Замечаний</span></article><article className="statCard"><strong>{riskStats.High}</strong><span>High risk</span></article></div>
           <div className="twoColumns">
             <div className="card"><h2>График рисков</h2>{Object.entries(riskStats).map(([level,count]) => <div className="riskBar" key={level}><span>{level}</span><div><b style={{width:`${Math.min(100, count*18)}%`}} /></div><em>{count}</em></div>)}</div>
-            <div className="card"><h2>AI-вывод</h2>{ai ? <><p><b>Риск: {ai.risk_level}</b></p><p>{ai.executive_brief}</p><p>{ai.recommendation}</p></> : <p>AI-вывод пока недоступен.</p>}</div>
+            <div className="card"><h2>Приоритетные действия</h2><div className="priorityList">{(ai?.priority_actions || ['Проверьте замечания высокого и среднего риска.', 'Уточните спорные позиции у подрядчика.', 'После исправления повторно загрузите смету.']).map((item)=><div className="priorityItem" key={item}>{item}</div>)}</div></div>
           </div>
+          <div className="card"><h2>Финансовые флаги</h2><ul>{(ai?.cost_flags || ['Проверьте крупные позиции и итоговую сумму.']).map((item)=><li key={item}>{item}</li>)}</ul></div>
           <div className="card"><h2>Что обсудить с подрядчиком</h2><ul>{(ai?.questions || ['Проверьте позиции высокого и среднего риска.', 'Уточните строки без количества, цены или суммы.', 'Сравните итоговую сумму с договором.']).map((item)=><li key={item}>{item}</li>)}</ul></div>
           <div className="card"><h2>Замечания</h2><div className="reportTable"><table><thead><tr><th>Риск</th><th>Проблема</th><th>Детали</th></tr></thead><tbody>{(estimate.findings || []).map((finding,index)=><tr key={index}><td>{finding.severity}</td><td>{finding.title}</td><td>{finding.detail}</td></tr>)}</tbody></table></div></div>
           <div className="card"><h2>Позиции сметы</h2><div className="reportTable"><table><thead><tr><th>Строка</th><th>Название</th><th>Ед.</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead><tbody>{(estimate.items || []).slice(0,80).map((item)=><tr key={item.row}><td>{item.row}</td><td>{item.name}</td><td>{item.unit}</td><td>{item.quantity}</td><td>{money(item.unit_price)}</td><td>{money(item.total)}</td></tr>)}</tbody></table></div></div>
