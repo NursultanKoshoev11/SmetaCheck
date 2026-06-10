@@ -10,6 +10,12 @@ function statusLabel(status){
   return status || 'Неизвестно';
 }
 
+function authHeaders(){
+  if(typeof window === 'undefined') return {};
+  const token = window.localStorage.getItem('smetacheck_token');
+  return token ? {Authorization: `Bearer ${token}`} : {};
+}
+
 export default function Reports(){
   const [estimates, setEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -21,7 +27,7 @@ export default function Reports(){
     setLoading(true);
     setError('');
     try{
-      const response = await fetch(`${API_BASE}/v1/estimates`);
+      const response = await fetch(`${API_BASE}/v1/estimates`, {headers: authHeaders()});
       const data = await response.json();
       if(!response.ok){ throw new Error(data.error || 'Не удалось загрузить отчёты'); }
       setEstimates(data.estimates || []);
@@ -32,7 +38,7 @@ export default function Reports(){
   async function loadAI(estimateId){
     setAiLoading(estimateId);
     try{
-      const response = await fetch(`${API_BASE}/v1/ai/estimate-summary/${estimateId}`);
+      const response = await fetch(`${API_BASE}/v1/ai/estimate-summary/${estimateId}`, {headers: authHeaders()});
       const data = await response.json();
       if(!response.ok){ throw new Error(data.error || 'AI-анализ недоступен'); }
       setAi((prev)=>({...prev, [estimateId]: data}));
@@ -48,11 +54,7 @@ export default function Reports(){
   return (
     <main className="page">
       <Nav/>
-      <section className="pageHero compact">
-        <p className="eyebrow">Отчёты</p>
-        <h1>Понятные отчёты по каждой проверенной смете.</h1>
-        <p>Отчёт показывает строки, сумму, оценку, замечания и AI-вывод простым языком.</p>
-      </section>
+      <section className="pageHero compact"><p className="eyebrow">Отчёты</p><h1>Понятные отчёты по каждой проверенной смете.</h1><p>Откройте детальный отчёт, посмотрите AI-вывод и сохраните страницу как PDF.</p></section>
       <section className="workspace">
         <div className="buttonRow"><button className="btn secondary" type="button" onClick={loadReports}>Обновить</button><a className="btn" href="/upload">Загрузить новую смету</a></div>
         {loading && <div className="card"><p>Загружаем отчёты...</p></div>}
@@ -64,16 +66,8 @@ export default function Reports(){
             <h2>{estimate.file_name}</h2>
             <p>Оценка: <b>{estimate.score}/100</b> · строк: <b>{estimate.items_count || 0}</b> · сумма: <b>{Number(estimate.total_amount || 0).toLocaleString('ru-RU')}</b></p>
             <ul>{(estimate.findings || []).slice(0,4).map((finding, index) => <li key={`${estimate.id}-${index}`}>{finding.title}: {finding.detail}</li>)}</ul>
-            <div className="buttonRow"><a className="btn" href={`${API_BASE}/v1/estimates/${estimate.id}/report`}>Скачать отчёт</a><button className="btn secondary" type="button" onClick={()=>loadAI(estimate.id)} disabled={aiLoading===estimate.id}>{aiLoading===estimate.id ? 'AI анализирует...' : 'AI-анализ'}</button></div>
-            {ai[estimate.id] && <div className="resultBox">
-              {ai[estimate.id].error ? <p>{ai[estimate.id].error}</p> : <>
-                <b>AI-вывод: риск {ai[estimate.id].risk_level}</b>
-                <p>{ai[estimate.id].executive_brief}</p>
-                <h3>Что обсудить</h3>
-                <ul>{(ai[estimate.id].questions || []).map((item)=><li key={item}>{item}</li>)}</ul>
-                <p>{ai[estimate.id].recommendation}</p>
-              </>}
-            </div>}
+            <div className="buttonRow"><a className="btn" href={`/reports/${estimate.id}`}>Открыть отчёт</a><a className="btn secondary" href={`${API_BASE}/v1/estimates/${estimate.id}/report`}>TXT</a><button className="btn secondary" type="button" onClick={()=>loadAI(estimate.id)} disabled={aiLoading===estimate.id}>{aiLoading===estimate.id ? 'AI анализирует...' : 'AI-анализ'}</button></div>
+            {ai[estimate.id] && <div className="resultBox">{ai[estimate.id].error ? <p>{ai[estimate.id].error}</p> : <><b>AI-вывод: риск {ai[estimate.id].risk_level}</b><p>{ai[estimate.id].executive_brief}</p><p>{ai[estimate.id].recommendation}</p></>}</div>}
           </article>)}
         </div>}
       </section>
