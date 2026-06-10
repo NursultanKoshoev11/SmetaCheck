@@ -2,7 +2,7 @@
 
 SmetaCheck KG is a production-oriented platform for preliminary construction estimate checks in Kyrgyzstan.
 
-The current MVP scope is intentionally simple and testable: upload a real estimate file, store it safely, generate review metadata, create a downloadable report file, and show the result in the web dashboard.
+The current MVP scope is testable: upload a real estimate file, parse spreadsheet rows, run deterministic checks, generate review metadata, create a downloadable report file, compare two estimate versions, and show results in the web dashboard.
 
 ## Current services
 
@@ -16,12 +16,27 @@ The current MVP scope is intentionally simple and testable: upload a real estima
 
 ## Working MVP flow
 
-- `POST /v1/estimates/upload` uploads a file and creates estimate metadata.
+- `POST /v1/estimates/upload` uploads XLSX/XLSM/CSV files, parses estimate rows, runs checks, and creates estimate metadata.
 - `GET /v1/estimates` returns uploaded estimate history.
-- `GET /v1/estimates/{id}` returns one estimate.
+- `GET /v1/estimates/{id}` returns one estimate with findings and parsed items.
 - `GET /v1/estimates/{id}/report` downloads the generated report text file.
+- `POST /v1/estimates/compare` compares two estimate versions and returns added, removed, and changed items.
 - `/upload` in the web app uploads files to the API.
 - `/dashboard` and `/reports` read real data from the API.
+- `/compare` compares two uploaded estimate versions through the API.
+- `/how-it-works` and `/faq` explain the product for demo sales.
+
+## Checks currently implemented
+
+- Missing item name
+- Missing unit
+- Missing quantity
+- Missing unit price
+- Missing row total
+- Quantity × unit price mismatch
+- Possible duplicate items
+- Large amount review warning
+- Added/removed/changed items between two estimate versions
 
 ## Production preparation already included
 
@@ -34,7 +49,7 @@ The current MVP scope is intentionally simple and testable: upload a real estima
 - Request ID header
 - Panic recovery middleware
 - Production placeholder secret validation
-- Separate Dockerfiles for API, worker, and Telegram bot
+- Separate Dockerfiles for API, worker, Telegram bot, and frontend
 - Docker Compose healthchecks and persistent volumes
 - GitHub Actions CI for Go checks and Docker builds
 
@@ -88,11 +103,10 @@ curl http://localhost:8080/v1/estimates
 ## Required before real public launch
 
 - Replace text-file metadata storage with PostgreSQL-backed tables.
-- Implement real Excel/PDF row-level parsing.
-- Implement deterministic estimate checks for quantities, units, duplicate rows, totals, and suspicious prices.
 - Replace generated TXT report with PDF/Excel export.
 - Add real authentication to protect user-specific estimate history.
 - Configure HTTPS through a reverse proxy or cloud load balancer.
 - Configure database backups and uptime monitoring.
+- Test parser and checks with real Kyrgyzstan estimate files from multiple companies.
 
 See [`docs/PRODUCTION_CHECKLIST.md`](docs/PRODUCTION_CHECKLIST.md) before deploying.
