@@ -11,6 +11,7 @@ func Run() {
 	if err := validateProductionConfig(); err != nil {
 		log.Fatalf("configuration error: %v", err)
 	}
+	initDatabaseForRun()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", Health)
