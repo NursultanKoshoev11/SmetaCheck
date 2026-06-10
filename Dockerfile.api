@@ -7,7 +7,10 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 FROM alpine:3.20
 WORKDIR /app
-RUN addgroup -S smetacheck && adduser -S smetacheck -G smetacheck
+RUN addgroup -S smetacheck \
+    && adduser -S smetacheck -G smetacheck \
+    && mkdir -p /var/lib/smetacheck/uploads /var/lib/smetacheck/reports \
+    && chown -R smetacheck:smetacheck /var/lib/smetacheck
 COPY --from=build /out/api /app/api
 USER smetacheck
 EXPOSE 8080
