@@ -7,13 +7,13 @@ export default function Pricing(){
     <main className="page">
       <Nav/>
       <section className="pageHero compact">
-        <p className="eyebrow">Pricing</p>
-        <h1>Simple plans for estimate review teams.</h1>
-        <p>Begin with a small workflow, then upgrade when reports and team collaboration become part of daily work.</p>
+        <p className="eyebrow">Тарифы</p>
+        <h1>Выберите формат проверки смет под ваш проект.</h1>
+        <p>Можно начать с одной сметы, показать результат клиенту или команде, а затем подключить регулярную проверку для всех проектов.</p>
       </section>
       <PricingCards/>
       <section className="workspace">
-        <div className="card"><h2>Need a company plan?</h2><p>Use the support page to request a team setup, private onboarding, or custom report workflow.</p><a className="btn" href="/support">Contact support</a></div>
+        <div className="card"><h2>Нужен тариф для компании?</h2><p>Мы подготовим формат для строительной команды: роли, отчёты, история проверок и понятный процесс согласования.</p><a className="btn" href="/support">Связаться</a></div>
       </section>
       <Footer/>
     </main>
