@@ -10,6 +10,12 @@ function fileSizeLabel(file){
   return `${Math.max(1, Math.round(file.size / 1024))} KB`;
 }
 
+function authHeaders(){
+  if(typeof window === 'undefined') return {};
+  const token = window.localStorage.getItem('smetacheck_token');
+  return token ? {Authorization: `Bearer ${token}`} : {};
+}
+
 export default function Upload(){
   const [file, setFile] = useState(null);
   const [status, setStatus] = useState('idle');
@@ -29,7 +35,7 @@ export default function Upload(){
     formData.append('file', file);
 
     try{
-      const response = await fetch(`${API_BASE}/v1/estimates/upload`, {method:'POST', body:formData});
+      const response = await fetch(`${API_BASE}/v1/estimates/upload`, {method:'POST', headers:authHeaders(), body:formData});
       const data = await response.json();
       if(!response.ok){ throw new Error(data.error || 'Не удалось загрузить файл'); }
       setResult(data);
@@ -64,16 +70,11 @@ export default function Upload(){
           <div className="modernMiniGrid"><span>Проверка сумм</span><span>Поиск дублей</span><span>Отчёт для обсуждения</span></div>
           <button className="btn" type="button" onClick={submitUpload} disabled={status==='uploading'}>{status==='uploading' ? 'Проверяем...' : 'Начать проверку'}</button>
           {message && <p className={`statusText ${status}`}>{message}</p>}
-          {result && <div className="resultBox"><b>Проверка создана</b><p>ID: {result.id}</p><p>Оценка: {result.score}/100 · строк: {result.items_count || 0}</p><a className="btn secondary" href={`/reports`}>Открыть отчёты</a></div>}
+          {result && <div className="resultBox"><b>Проверка создана</b><p>ID: {result.id}</p><p>Оценка: {result.score}/100 · строк: {result.items_count || 0}</p><a className="btn secondary" href={`/reports/${result.id}`}>Открыть отчёт</a></div>}
         </div>
         <div className="card checklistCard">
           <h2>Что получает клиент</h2>
-          <ul>
-            <li>Файл сохраняется в системе</li>
-            <li>Создаётся история проверок</li>
-            <li>Формируется первичный отчёт</li>
-            <li>Команде проще обсудить спорные расходы</li>
-          </ul>
+          <ul><li>Файл сохраняется в системе</li><li>Создаётся история проверок</li><li>Формируется первичный отчёт</li><li>Команде проще обсудить спорные расходы</li></ul>
           <a className="btn secondary" href="/dashboard">Открыть кабинет</a>
         </div>
       </section>
