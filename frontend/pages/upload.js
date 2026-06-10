@@ -12,11 +12,11 @@ export default function Upload(){
 
   async function submitUpload(){
     if(!file){
-      setMessage('Choose a file first.');
+      setMessage('Сначала выберите файл сметы.');
       return;
     }
     setStatus('uploading');
-    setMessage('Uploading file...');
+    setMessage('Загружаем файл и готовим проверку...');
     setResult(null);
 
     const formData = new FormData();
@@ -26,14 +26,14 @@ export default function Upload(){
       const response = await fetch(`${API_BASE}/v1/estimates/upload`, {method:'POST', body:formData});
       const data = await response.json();
       if(!response.ok){
-        throw new Error(data.error || 'Upload failed');
+        throw new Error(data.error || 'Не удалось загрузить файл');
       }
       setResult(data);
       setStatus('done');
-      setMessage('Estimate uploaded and report metadata created.');
+      setMessage('Смета загружена. Отчёт и данные проверки созданы.');
     }catch(error){
       setStatus('error');
-      setMessage(error.message || 'Upload failed');
+      setMessage(error.message || 'Не удалось загрузить файл');
     }
   }
 
@@ -41,29 +41,29 @@ export default function Upload(){
     <main className="page">
       <Nav/>
       <section className="pageHero compact">
-        <p className="eyebrow">Upload</p>
-        <h1>Upload an estimate and prepare it for review.</h1>
-        <p>Select an Excel or PDF estimate file. The API stores it, creates review metadata, and prepares a downloadable text report.</p>
+        <p className="eyebrow">Проверка сметы</p>
+        <h1>Загрузите смету и получите понятный отчёт для обсуждения.</h1>
+        <p>Подходит для владельцев домов, прорабов, сметчиков и строительных компаний. Начните с Excel или PDF файла, который уже есть у вас.</p>
       </section>
       <section className="workspace twoColumns">
         <div className="uploadBox">
           <div className="uploadIcon">+</div>
-          <h2>Drop your file here</h2>
-          <p>Production API target: <b>{API_BASE}</b></p>
+          <h2>Добавьте файл сметы</h2>
+          <p>API для проверки: <b>{API_BASE}</b></p>
           <input type="file" onChange={(event)=>setFile(event.target.files?.[0] || null)} />
-          <button className="btn" type="button" onClick={submitUpload} disabled={status==='uploading'}>{status==='uploading' ? 'Uploading...' : 'Start review'}</button>
+          <button className="btn" type="button" onClick={submitUpload} disabled={status==='uploading'}>{status==='uploading' ? 'Проверяем...' : 'Начать проверку'}</button>
           {message && <p className={`statusText ${status}`}>{message}</p>}
-          {result && <div className="resultBox"><b>Created estimate</b><p>ID: {result.id}</p><p>Score: {result.score}</p><a className="btn secondary" href={`/reports`}>Open reports</a></div>}
+          {result && <div className="resultBox"><b>Проверка создана</b><p>ID: {result.id}</p><p>Оценка: {result.score}</p><a className="btn secondary" href={`/reports`}>Открыть отчёты</a></div>}
         </div>
         <div className="card checklistCard">
-          <h2>What currently works</h2>
+          <h2>Что получает клиент</h2>
           <ul>
-            <li>File upload to Go API</li>
-            <li>Persistent file storage in upload volume</li>
-            <li>Estimate metadata creation</li>
-            <li>Downloadable report file generation</li>
+            <li>Файл сохраняется в системе</li>
+            <li>Создаётся история проверок</li>
+            <li>Формируется первичный отчёт</li>
+            <li>Команде проще обсудить спорные расходы</li>
           </ul>
-          <a className="btn secondary" href="/dashboard">Open dashboard</a>
+          <a className="btn secondary" href="/dashboard">Открыть кабинет</a>
         </div>
       </section>
       <Footer/>
