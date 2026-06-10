@@ -6,16 +6,16 @@ export default function Compare(){
     <main className="page">
       <Nav/>
       <section className="pageHero compact">
-        <p className="eyebrow">Compare</p>
-        <h1>Compare two estimate versions before approval.</h1>
-        <p>See added rows, removed rows, changed totals, and review notes in one clean comparison view.</p>
+        <p className="eyebrow">Сравнение смет</p>
+        <h1>Сравните две версии сметы перед согласованием бюджета.</h1>
+        <p>Покажите клиенту или команде, что добавилось, что изменилось и какие суммы требуют внимания.</p>
       </section>
       <section className="workspace twoColumns">
-        <div className="compareDrop"><span>01</span><h2>Base estimate</h2><p>Upload the original estimate version.</p><input type="file" /></div>
-        <div className="compareDrop"><span>02</span><h2>New estimate</h2><p>Upload the updated estimate version.</p><input type="file" /></div>
+        <div className="compareDrop"><span>01</span><h2>Исходная смета</h2><p>Загрузите первую версию документа.</p><input type="file" /></div>
+        <div className="compareDrop"><span>02</span><h2>Новая версия</h2><p>Загрузите обновлённую смету.</p><input type="file" /></div>
       </section>
       <section className="workspace">
-        <div className="card"><h2>Comparison output</h2><div className="grid"><p>Added items</p><p>Removed items</p><p>Changed totals</p></div><a className="btn" href="/reports">Prepare report</a></div>
+        <div className="card"><h2>Что даст сравнение</h2><div className="grid"><p>Новые позиции</p><p>Удалённые позиции</p><p>Изменения по суммам</p></div><a className="btn" href="/reports">Перейти к отчётам</a></div>
       </section>
       <Footer/>
     </main>
