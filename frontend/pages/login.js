@@ -7,16 +7,16 @@ export default function Login(){
       <Nav/>
       <section className="authShell">
         <div>
-          <p className="eyebrow">Account</p>
-          <h1>Sign in to your estimate review workspace.</h1>
-          <p>Manage uploads, reports, comparison history, and team review activity from one place.</p>
+          <p className="eyebrow">Аккаунт</p>
+          <h1>Войдите в кабинет проверки строительных смет.</h1>
+          <p>Храните загруженные сметы, отчёты, историю проверок и рабочие материалы в одном месте.</p>
         </div>
         <form className="authCard">
           <label>Email<input placeholder="name@company.com" type="email" /></label>
-          <label>Password<input placeholder="Your password" type="password" /></label>
-          <button className="btn" type="button">Sign in</button>
-          <button className="btn secondary" type="button">Continue with Google</button>
-          <p>New here? <a href="/pricing">Choose a plan</a></p>
+          <label>Пароль<input placeholder="Ваш пароль" type="password" /></label>
+          <button className="btn" type="button">Войти</button>
+          <button className="btn secondary" type="button">Продолжить через Google</button>
+          <p>Нет аккаунта? <a href="/pricing">Выбрать тариф</a></p>
         </form>
       </section>
       <Footer/>
