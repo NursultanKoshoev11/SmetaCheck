@@ -1,11 +1,14 @@
 package api
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestAnalyzeCSVEstimate(t *testing.T) {
 	path := t.TempDir() + "/estimate.csv"
 	content := "Наименование,Ед,Количество,Цена,Сумма\nКирпич,шт,1000,12,12000\nЦемент,мешок,20,450,9000\nПесок,м3,5,1200,6000\n"
-	if err := writeTestFile(path, content); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o640); err != nil {
 		t.Fatal(err)
 	}
 	items, findings := analyzeEstimateFile(path, "estimate.csv", int64(len(content)))
@@ -55,8 +58,4 @@ func TestAISummary(t *testing.T) {
 	if summary.ExecutiveBrief == "" || len(summary.Questions) == 0 {
 		t.Fatal("summary is incomplete")
 	}
-}
-
-func writeTestFile(path string, content string) error {
-	return osWriteFile(path, []byte(content), 0o640)
 }
