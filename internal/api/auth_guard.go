@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -15,28 +16,32 @@ type RequestUser struct {
 }
 
 func currentRequestUser(r *http.Request) (RequestUser, bool) {
+	tokenText := ""
 	header := strings.TrimSpace(r.Header.Get("Authorization"))
-	if header == "" || !strings.HasPrefix(strings.ToLower(header), "bearer ") {
+	if strings.HasPrefix(strings.ToLower(header), "bearer ") {
+		tokenText = strings.TrimSpace(header[7:])
+	} else if cookieToken, ok := readAccessCookie(r); ok {
+		tokenText = cookieToken
+	}
+	if tokenText == "" {
 		return RequestUser{}, false
 	}
+
 	secret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
 	if secret == "" {
 		return RequestUser{}, false
 	}
-	tokenText := strings.TrimSpace(header[7:])
-	token, err := jwt.Parse(tokenText, func(token *jwt.Token) (any, error) {
+	claims := jwt.MapClaims{}
+	token, err := jwt.ParseWithClaims(tokenText, claims, func(token *jwt.Token) (any, error) {
 		if token.Method != jwt.SigningMethodHS256 {
-			return nil, jwt.ErrSignatureInvalid
+			return nil, fmt.Errorf("unexpected signing method")
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithIssuer(authIssuer()), jwt.WithAudience("smetacheck-api"), jwt.WithExpirationRequired())
 	if err != nil || !token.Valid {
 		return RequestUser{}, false
 	}
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return RequestUser{}, false
-	}
+
 	user := RequestUser{}
 	if value, ok := claims["sub"].(string); ok { user.ID = value }
 	if value, ok := claims["email"].(string); ok { user.Email = value }
