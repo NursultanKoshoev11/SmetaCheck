@@ -155,7 +155,7 @@ func EstimateAISummaryPostgres(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusNotFound, "estimate not found")
 		return
 	}
-	estimateWriteJSON(w, http.StatusOK, buildAISummary(estimate))
+	estimateWriteJSON(w, http.StatusOK, generateAISummary(r.Context(), user.ID, estimate))
 }
 
 func EstimateComparePostgres(w http.ResponseWriter, r *http.Request) {
