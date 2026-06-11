@@ -32,6 +32,7 @@ func Run() {
 	mux.HandleFunc("/v1/auth/telegram", requireMethod(http.MethodGet, AuthTelegramBeginSecure))
 	mux.HandleFunc("/v1/auth/telegram/callback", requireMethod(http.MethodGet, AuthTelegramCallbackSecure))
 
+	mux.HandleFunc("/v1/ai/providers", requireMethod(http.MethodGet, AIProviders))
 	mux.HandleFunc("/v1/ai/estimate-summary/", requireMethod(http.MethodGet, EstimateAISummaryPostgres))
 	mux.HandleFunc("/v1/analysis-batches", requireMethod(http.MethodPost, AnalysisBatchCreate))
 	mux.HandleFunc("/v1/analysis-batches/", requireMethod(http.MethodGet, AnalysisBatchRouter))
@@ -41,15 +42,17 @@ func Run() {
 	mux.HandleFunc("/v1/estimates/", requireMethod(http.MethodGet, EstimateDetailRouterPostgres))
 
 	addr := os.Getenv("HTTP_ADDR")
-	if addr == "" { addr = ":8080" }
+	if addr == "" {
+		addr = ":8080"
+	}
 	server := &http.Server{
-		Addr: addr,
-		Handler: recoverPanic(requestID(securityHeaders(cors(csrfProtection(maxBodyBytes(mux))))))),
+		Addr:              addr,
+		Handler:           recoverPanic(requestID(securityHeaders(cors(csrfProtection(maxBodyBytes(mux))))))),
 		ReadHeaderTimeout: envDuration("SERVER_READ_HEADER_TIMEOUT", 5*time.Second),
-		ReadTimeout: envDuration("SERVER_READ_TIMEOUT", 60*time.Second),
-		WriteTimeout: envDuration("SERVER_WRITE_TIMEOUT", 60*time.Second),
-		IdleTimeout: envDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
-		MaxHeaderBytes: 1 << 20,
+		ReadTimeout:       envDuration("SERVER_READ_TIMEOUT", 60*time.Second),
+		WriteTimeout:      envDuration("SERVER_WRITE_TIMEOUT", 60*time.Second),
+		IdleTimeout:       envDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
+		MaxHeaderBytes:    1 << 20,
 	}
 	log.Printf("smetacheck api listening on %s", addr)
 	log.Fatal(server.ListenAndServe())
