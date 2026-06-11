@@ -24,35 +24,53 @@ cat > "$NEW_FILE" <<'CSV'
 Арматура,кг,300,65,19500
 CSV
 
-echo "1) Health"
+echo "1) Health and PostgreSQL readiness"
 curl -fsS "$API_BASE/health" >/dev/null
+curl -fsS "$API_BASE/ready" | grep -q 'postgresql'
 
-echo "2) Register"
+echo "2) Protected endpoint rejects anonymous request"
+STATUS="$(curl -sS -o /dev/null -w '%{http_code}' "$API_BASE/v1/estimates")"
+test "$STATUS" = "401"
+
+echo "3) Register user in PostgreSQL"
 REGISTER_RESPONSE="$(curl -fsS -X POST "$API_BASE/v1/auth/register" -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\",\"full_name\":\"Smoke Test\"}")"
 echo "$REGISTER_RESPONSE" | grep -q 'token'
 
-echo "3) Login"
+echo "4) Login and extract JWT"
 LOGIN_RESPONSE="$(curl -fsS -X POST "$API_BASE/v1/auth/login" -H 'Content-Type: application/json' -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")"
-echo "$LOGIN_RESPONSE" | grep -q 'token'
+TOKEN="$(printf '%s' "$LOGIN_RESPONSE" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
+if [ -z "$TOKEN" ]; then
+  echo "Cannot parse JWT from login response" >&2
+  echo "$LOGIN_RESPONSE" >&2
+  exit 1
+fi
+AUTH_HEADER="Authorization: Bearer $TOKEN"
 
-echo "4) Upload estimate"
-UPLOAD_RESPONSE="$(curl -fsS -X POST "$API_BASE/v1/estimates/upload" -F "file=@$BASE_FILE")"
+echo "5) Verify current user"
+curl -fsS "$API_BASE/v1/auth/me" -H "$AUTH_HEADER" | grep -q "$EMAIL"
+
+echo "6) Upload estimate to PostgreSQL-backed account"
+UPLOAD_RESPONSE="$(curl -fsS -X POST "$API_BASE/v1/estimates/upload" -H "$AUTH_HEADER" -F "file=@$BASE_FILE")"
 echo "$UPLOAD_RESPONSE" | grep -q 'score'
 ESTIMATE_ID="$(printf '%s' "$UPLOAD_RESPONSE" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')"
 if [ -z "$ESTIMATE_ID" ]; then
-  echo "Cannot parse estimate id from upload response" >&2
+  echo "Cannot parse estimate id" >&2
   echo "$UPLOAD_RESPONSE" >&2
   exit 1
 fi
 
-echo "5) List estimates"
-curl -fsS "$API_BASE/v1/estimates" | grep -q "$ESTIMATE_ID"
+echo "7) List only authenticated user's estimates"
+curl -fsS "$API_BASE/v1/estimates" -H "$AUTH_HEADER" | grep -q "$ESTIMATE_ID"
 
-echo "6) AI summary"
-curl -fsS "$API_BASE/v1/ai/estimate-summary/$ESTIMATE_ID" | grep -q 'executive_brief'
+echo "8) Load detailed estimate and AI summary"
+curl -fsS "$API_BASE/v1/estimates/$ESTIMATE_ID" -H "$AUTH_HEADER" | grep -q 'findings'
+curl -fsS "$API_BASE/v1/ai/estimate-summary/$ESTIMATE_ID" -H "$AUTH_HEADER" | grep -q 'executive_brief'
 
-echo "7) Compare estimates"
-COMPARE_RESPONSE="$(curl -fsS -X POST "$API_BASE/v1/estimates/compare" -F "base=@$BASE_FILE" -F "new=@$NEW_FILE")"
+echo "9) Download authenticated report"
+curl -fsS "$API_BASE/v1/estimates/$ESTIMATE_ID/report" -H "$AUTH_HEADER" | grep -q 'SmetaCheck'
+
+echo "10) Compare estimates and save result"
+COMPARE_RESPONSE="$(curl -fsS -X POST "$API_BASE/v1/estimates/compare" -H "$AUTH_HEADER" -F "base=@$BASE_FILE" -F "new=@$NEW_FILE")"
 echo "$COMPARE_RESPONSE" | grep -q 'delta_total'
 
-echo "✅ Smoke test passed against $API_BASE"
+echo "✅ PostgreSQL smoke test passed against $API_BASE"
