@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  go:
+  backend:
     name: Backend quality and builds
     runs-on: ubuntu-latest
     steps:
@@ -21,44 +21,22 @@ jobs:
         with:
           go-version: '1.23.x'
           cache: true
-      - name: Synchronize module files
-        run: go mod tidy
-      - name: Run backend diagnostics
-        shell: bash
+      - name: Verify module files
         run: |
-          set +e
-          gofmt -l . > gofmt.log 2>&1
-          go vet ./... > vet.log 2>&1
-          echo $? > vet.status
-          go test -race ./... > race.log 2>&1
-          echo $? > race.status
-          CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-api ./cmd/api > build-api.log 2>&1
-          echo $? > build-api.status
-          CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-worker ./cmd/worker > build-worker.log 2>&1
-          echo $? > build-worker.status
-          CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-bot ./cmd/bot > build-bot.log 2>&1
-          echo $? > build-bot.status
-          exit 0
-      - name: Upload backend diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-diagnostics
-          path: |
-            go.mod
-            go.sum
-            gofmt.log
-            vet.log
-            race.log
-            build-*.log
-            *.status
-      - name: Enforce backend gate
-        shell: bash
+          cp go.mod /tmp/go.mod.before
+          cp go.sum /tmp/go.sum.before
+          go mod tidy
+          diff -u /tmp/go.mod.before go.mod
+          diff -u /tmp/go.sum.before go.sum
+      - name: Vet
+        run: go vet ./...
+      - name: Race tests
+        run: go test -race ./...
+      - name: Build services
         run: |
-          test "$(cat vet.status)" = "0"
-          test "$(cat race.status)" = "0"
-          test "$(cat build-api.status)" = "0"
-          test "$(cat build-worker.status)" = "0"
-          test "$(cat build-bot.status)" = "0"
+          CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-api ./cmd/api
+          CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-worker ./cmd/worker
+          CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-bot ./cmd/bot
 
   frontend:
     name: Frontend production build
@@ -80,47 +58,21 @@ jobs:
       - name: Build
         run: npm run build
 
-  docker:
+  containers:
     name: Production configuration and images
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.23.x'
-          cache: true
-      - name: Synchronize module files
-        run: go mod tidy
       - name: Prepare validation environment
         run: cp .env.production.example .env
       - name: Validate production Compose
         run: docker compose -f docker-compose.production.yml config --quiet
-      - name: Run container diagnostics
-        shell: bash
-        run: |
-          set +e
-          docker build --pull -f Dockerfile.api -t smetacheck-api:ci . > docker-api.log 2>&1
-          echo $? > docker-api.status
-          docker build --pull -f Dockerfile.worker -t smetacheck-worker:ci . > docker-worker.log 2>&1
-          echo $? > docker-worker.status
-          docker build --pull -f Dockerfile.bot -t smetacheck-bot:ci . > docker-bot.log 2>&1
-          echo $? > docker-bot.status
-          docker build --pull --build-arg NEXT_PUBLIC_API_BASE=https://api.example.com -f Dockerfile.frontend -t smetacheck-frontend:ci . > docker-frontend.log 2>&1
-          echo $? > docker-frontend.status
-          exit 0
-      - name: Upload container diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: container-diagnostics
-          path: |
-            docker-*.log
-            docker-*.status
-      - name: Enforce container gate
-        shell: bash
-        run: |
-          test "$(cat docker-api.status)" = "0"
-          test "$(cat docker-worker.status)" = "0"
-          test "$(cat docker-bot.status)" = "0"
-          test "$(cat docker-frontend.status)" = "0"
+      - name: Build API image
+        run: docker build --pull -f Dockerfile.api -t smetacheck-api:ci .
+      - name: Build worker image
+        run: docker build --pull -f Dockerfile.worker -t smetacheck-worker:ci .
+      - name: Build bot image
+        run: docker build --pull -f Dockerfile.bot -t smetacheck-bot:ci .
+      - name: Build frontend image
+        run: docker build --pull --build-arg NEXT_PUBLIC_API_BASE=https://api.example.com -f Dockerfile.frontend -t smetacheck-frontend:ci .
