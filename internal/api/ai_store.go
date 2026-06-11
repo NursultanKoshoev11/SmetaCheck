@@ -3,7 +3,10 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+
+	"github.com/jackc/pgx/v5"
 )
 
 func pgLoadAIReport(ctx context.Context, ownerID, estimateID, inputHash string) (AISummaryResponse, bool, error) {
@@ -28,10 +31,10 @@ func pgLoadAIReport(ctx context.Context, ownerID, estimateID, inputHash string) 
 		ORDER BY created_at DESC
 		LIMIT 1
 	`, ownerID, estimateID, inputHash, openAIModel(), aiPromptVersion).Scan(&payload)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AISummaryResponse{}, false, nil
+	}
 	if err != nil {
-		if isNoRows(err) {
-			return AISummaryResponse{}, false, nil
-		}
 		return AISummaryResponse{}, false, err
 	}
 
