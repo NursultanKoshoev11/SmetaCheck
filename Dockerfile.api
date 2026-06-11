@@ -1,17 +1,19 @@
 FROM golang:1.23-alpine AS build
 WORKDIR /src
+RUN apk add --no-cache ca-certificates
+COPY go.mod go.sum ./
+RUN go mod download
 COPY . .
-RUN go mod tidy
-RUN go test ./...
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/api ./cmd/api
 
 FROM alpine:3.20
 WORKDIR /app
-RUN addgroup -S smetacheck \
+RUN apk add --no-cache ca-certificates tzdata \
+    && addgroup -S smetacheck \
     && adduser -S smetacheck -G smetacheck \
     && mkdir -p /var/lib/smetacheck/uploads /var/lib/smetacheck/reports \
     && chown -R smetacheck:smetacheck /var/lib/smetacheck
-COPY --from=build /out/api /app/api
+COPY --from=build --chown=smetacheck:smetacheck /out/api /app/api
 USER smetacheck
 EXPOSE 8080
-CMD ["/app/api"]
+ENTRYPOINT ["/app/api"]

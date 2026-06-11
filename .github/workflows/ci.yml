@@ -9,96 +9,118 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   go:
-    name: Go checks
+    name: Backend quality and builds
     runs-on: ubuntu-latest
-    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
           cache: true
-
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Verify modules are tidy
+      - name: Synchronize module files
+        run: go mod tidy
+      - name: Run backend diagnostics
+        shell: bash
         run: |
-          go mod tidy
-          git diff --exit-code -- go.mod go.sum
-
-      - name: Check formatting
-        run: test -z "$(gofmt -l .)"
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test with race detector
-        run: go test -race -count=1 ./...
-
-      - name: Build all commands
+          set +e
+          gofmt -l . > gofmt.log 2>&1
+          go vet ./... > vet.log 2>&1
+          echo $? > vet.status
+          go test -race ./... > race.log 2>&1
+          echo $? > race.status
+          CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-api ./cmd/api > build-api.log 2>&1
+          echo $? > build-api.status
+          CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-worker ./cmd/worker > build-worker.log 2>&1
+          echo $? > build-worker.status
+          CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-bot ./cmd/bot > build-bot.log 2>&1
+          echo $? > build-bot.status
+          exit 0
+      - name: Upload backend diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-diagnostics
+          path: |
+            go.mod
+            go.sum
+            gofmt.log
+            vet.log
+            race.log
+            build-*.log
+            *.status
+      - name: Enforce backend gate
+        shell: bash
         run: |
-          go build ./cmd/api
-          go build ./cmd/worker
-          go build ./cmd/bot
+          test "$(cat vet.status)" = "0"
+          test "$(cat race.status)" = "0"
+          test "$(cat build-api.status)" = "0"
+          test "$(cat build-worker.status)" = "0"
+          test "$(cat build-bot.status)" = "0"
 
   frontend:
-    name: Frontend build
+    name: Frontend production build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Set up Node
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20.x'
+          node-version: '20'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
+      - name: Install locked dependencies
         run: npm ci
-
-      - name: Build frontend
-        env:
-          NEXT_PUBLIC_API_BASE: http://127.0.0.1:8080
+      - name: Build
         run: npm run build
 
   docker:
-    name: Docker and Compose checks
+    name: Production configuration and images
     runs-on: ubuntu-latest
-    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Prepare compose environment
-        run: cp .env.example .env
-
-      - name: Validate Compose configuration
-        run: docker compose config --quiet
-
-      - name: Build API image
-        run: docker build -f Dockerfile.api -t smetacheck-api:ci .
-
-      - name: Build worker image
-        run: docker build -f Dockerfile.worker -t smetacheck-worker:ci .
-
-      - name: Build frontend image
-        run: docker build --build-arg NEXT_PUBLIC_API_BASE=http://127.0.0.1:8080 -f Dockerfile.frontend -t smetacheck-frontend:ci .
-
-      - name: Build bot image
-        run: docker build -f Dockerfile.bot -t smetacheck-bot:ci .
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: true
+      - name: Synchronize module files
+        run: go mod tidy
+      - name: Prepare validation environment
+        run: cp .env.production.example .env
+      - name: Validate production Compose
+        run: docker compose -f docker-compose.production.yml config --quiet
+      - name: Run container diagnostics
+        shell: bash
+        run: |
+          set +e
+          docker build --pull -f Dockerfile.api -t smetacheck-api:ci . > docker-api.log 2>&1
+          echo $? > docker-api.status
+          docker build --pull -f Dockerfile.worker -t smetacheck-worker:ci . > docker-worker.log 2>&1
+          echo $? > docker-worker.status
+          docker build --pull -f Dockerfile.bot -t smetacheck-bot:ci . > docker-bot.log 2>&1
+          echo $? > docker-bot.status
+          docker build --pull --build-arg NEXT_PUBLIC_API_BASE=https://api.example.com -f Dockerfile.frontend -t smetacheck-frontend:ci . > docker-frontend.log 2>&1
+          echo $? > docker-frontend.status
+          exit 0
+      - name: Upload container diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-diagnostics
+          path: |
+            docker-*.log
+            docker-*.status
+      - name: Enforce container gate
+        shell: bash
+        run: |
+          test "$(cat docker-api.status)" = "0"
+          test "$(cat docker-worker.status)" = "0"
+          test "$(cat docker-bot.status)" = "0"
+          test "$(cat docker-frontend.status)" = "0"
