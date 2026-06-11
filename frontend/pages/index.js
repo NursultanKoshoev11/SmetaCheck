@@ -1,65 +1,94 @@
+import Head from 'next/head';
 import Nav from '../components/Nav';
 import Footer from '../components/Footer';
 
-const findings = [
-  ['1', 'Несовпадение количества и суммы', 'Находим строки, где итог может не совпадать с количеством и ценой.', 'Высокий риск'],
-  ['2', 'Повторяющиеся позиции', 'Помогаем увидеть материалы и работы, которые могут быть добавлены несколько раз.', 'Средний риск'],
-  ['3', 'Пустые единицы, цены и объёмы', 'Показываем места, где смета выглядит неполной и требует уточнения.', 'Высокий риск'],
+const checks = [
+  ['Расхождения в расчётах', 'Проверяем строки, где количество × цена не совпадает с итоговой суммой.'],
+  ['Возможные дубли', 'Выделяем похожие материалы и работы, которые могли попасть в смету несколько раз.'],
+  ['Неполные позиции', 'Находим строки без названия, единицы, количества, цены или итоговой суммы.'],
+  ['Изменения между версиями', 'Показываем, что добавили, удалили и изменили перед согласованием бюджета.'],
+  ['Крупные позиции', 'Собираем дорогие строки в отдельный список для обязательного ручного уточнения.'],
+  ['Понятные вопросы', 'Превращаем технические замечания в конкретные вопросы подрядчику или сметчику.'],
 ];
 
-const steps = [
-  ['Шаг 1', 'Загрузите смету', 'Добавьте файл от прораба, подрядчика, сметчика или строительной компании.'],
-  ['Шаг 2', 'Получите понятную проверку', 'Система выделит спорные места, риски, повторы и строки, которые нужно пересмотреть.'],
-  ['Шаг 3', 'Принимайте решение увереннее', 'Скачайте отчёт и обсудите его с командой до оплаты или утверждения бюджета.'],
+const audiences = [
+  ['Владельцу дома', 'Поймите, какие строки нужно уточнить до предоплаты и утверждения бюджета.', '/for-homeowners', 'Проверить свою смету'],
+  ['Прорабу и подрядчику', 'Покажите заказчику прозрачный отчёт и согласуйте обновлённую смету быстрее.', '/for-contractors', 'Подготовить отчёт клиенту'],
+  ['Строительной компании', 'Сравнивайте версии, сохраняйте историю и стандартизируйте первичную проверку.', '/for-companies', 'Запустить пилот'],
 ];
 
-const benefits = [
-  ['Для владельца дома', 'Понимаете, где могут быть переплаты, спорные позиции и ошибки до начала работ.'],
-  ['Для прораба', 'Быстрее объясняете заказчику смету и показываете прозрачность работы.'],
-  ['Для сметчика', 'Ускоряете первичную проверку и готовите более понятный отчёт для клиента.'],
-  ['Для компании', 'Снижаете количество конфликтов, ручных проверок и неясных согласований.'],
+const trust = [
+  ['Правила работают без AI', 'Арифметические и структурные проверки выполняются детерминированно.'],
+  ['AI объясняет, а не выдумывает', 'AI помогает сформулировать вывод и вопросы, но исходные замечания остаются видимыми.'],
+  ['Результат не является экспертизой', 'SmetaCheck помогает найти места для проверки и не заменяет инженера-сметчика.'],
+  ['Данные под контролем пользователя', 'В кабинете отображаются только сметы текущего аккаунта; правила обработки описаны отдельно.'],
 ];
 
 export default function Home(){
   return (
-    <main className="page ugPage">
+    <main className="page">
+      <Head>
+        <title>SmetaCheck KG — проверка строительной сметы до оплаты</title>
+        <meta name="description" content="Загрузите строительную смету и получите понятный список ошибок, дублей, неполных строк и изменений между версиями до утверждения бюджета." />
+        <meta property="og:title" content="Проверьте строительную смету до оплаты подрядчику" />
+        <meta property="og:description" content="SmetaCheck находит расчётные ошибки, возможные дубли и спорные позиции и готовит понятный отчёт." />
+      </Head>
       <Nav/>
-      <section className="ugHero">
-        <p className="ugProof">Для строительных смет в Кыргызстане · Быстрая проверка · Понятный отчёт</p>
-        <h1>Проверьте смету до оплаты и найдите спорные расходы заранее.</h1>
-        <p className="ugLead">SmetaCheck помогает владельцам, прорабам и строительным компаниям быстро увидеть ошибки, повторы, неполные строки и риски в строительной смете.</p>
-        <div className="ugActions"><a className="btn" href="/upload">Проверить смету</a><a className="btn secondary" href="/reports">Посмотреть отчёт</a></div>
-        <p className="ugFine">Первичная проверка без сложной настройки · Подходит для домов, ремонтов и строительных проектов</p>
-      </section>
 
-      <section className="ugReport">
-        <div className="ugReportTop"><span>Пример проверки · Сегодня</span><b>Готово</b></div>
-        <h2>Смета на дом: найдено 12 пунктов для проверки</h2>
-        <p className="ugReportSummary">Краткий вывод: файл можно читать, но перед утверждением бюджета стоит проверить повторяющиеся позиции, неполные строки и возможные расхождения в итогах.</p>
-        <div className="ugFindingList">
-          {findings.map(([n,title,text,tag]) => <article key={title}><span>{n}</span><div><h3>{title}</h3><p>{text}</p></div><b>{tag}</b></article>)}
+      <section className="marketingHero">
+        <div>
+          <p className="eyebrow">Независимая проверка строительной сметы</p>
+          <h1>Проверьте смету до оплаты подрядчику.</h1>
+          <p className="lead">SmetaCheck находит возможные дубли, неполные строки, ошибки в расчётах и изменения между версиями. Вы получаете понятный отчёт с вопросами, которые нужно обсудить до утверждения бюджета.</p>
+          <div className="heroActions">
+            <a className="btn" href="/demo">Проверить demo-смету</a>
+            <a className="btn secondary" href="/sample-report">Посмотреть пример отчёта</a>
+          </div>
+          <div className="heroTrust">
+            <span>Demo без регистрации</span>
+            <span>Excel и CSV</span>
+            <span>Русский интерфейс</span>
+            <span>Для проектов в Кыргызстане</span>
+          </div>
+        </div>
+
+        <div className="productPreview" aria-label="Пример отчёта SmetaCheck">
+          <div className="previewHead"><span>Смета на строительство дома</span><b>Проверка завершена</b></div>
+          <div className="previewScore"><strong>82</strong><div><b>Оценка структуры</b><span>Найдено 12 пунктов для проверки до согласования бюджета</span></div></div>
+          <article className="previewFinding"><i>!</i><div><h3>Возможный дубль позиции</h3><p>Кладочная сетка указана в двух строках с похожим названием.</p></div><em>Высокий риск</em></article>
+          <article className="previewFinding"><i>!</i><div><h3>Не совпадает расчёт</h3><p>Количество × цена отличается от итоговой суммы строки.</p></div><em>Высокий риск</em></article>
+          <article className="previewFinding"><i>?</i><div><h3>Нет единицы измерения</h3><p>Без единицы сложно проверить объём и сравнить предложение.</p></div><em>Уточнить</em></article>
         </div>
       </section>
 
-      <section className="ugSection">
-        <p className="eyebrow">Как это работает</p>
-        <h2>От файла сметы до понятного отчёта за несколько шагов.</h2>
-        <div className="ugSteps">{steps.map(([step,title,text]) => <article key={title}><span>{step}</span><h3>{title}</h3><p>{text}</p></article>)}</div>
+      <section className="marketingSection">
+        <div className="marketingSectionHeader"><p className="eyebrow">Что проверяет сервис</p><h2>Не просто оценка, а конкретные строки и причины.</h2><p>Каждое замечание привязано к данным сметы, чтобы вы могли быстро обсудить его с ответственным человеком.</p></div>
+        <div className="valueGrid">{checks.map(([title,text], index)=><article className="valueCard" key={title}><span>{String(index+1).padStart(2,'0')}</span><h3>{title}</h3><p>{text}</p></article>)}</div>
       </section>
 
-      <section className="ugSection">
-        <p className="eyebrow">Почему это выгодно</p>
-        <h2>Один инструмент для контроля денег, сроков и доверия.</h2>
-        <div className="ugSteps">{benefits.map(([title,text]) => <article key={title}><span>Плюс</span><h3>{title}</h3><p>{text}</p></article>)}</div>
+      <section className="conversionBand">
+        <div><h2>Посмотрите реальный результат до регистрации.</h2><p>Сначала проверьте пример, затем решите, стоит ли загружать собственный документ.</p></div>
+        <div className="heroActions"><a className="btn" href="/demo">Запустить demo</a><a className="btn secondary" href="/how-it-works">Как это работает</a></div>
       </section>
 
-      <section className="ugCompare">
-        <div><p className="eyebrow">Без SmetaCheck</p><h2>Ручная проверка</h2><ul><li>Смету сложно читать без опыта.</li><li>Повторы и спорные строки легко пропустить.</li><li>Заказчик часто не понимает, за что платит.</li></ul></div>
-        <div><p className="eyebrow">С SmetaCheck</p><h2>Понятная проверка</h2><ul><li>Риски собраны в одном отчёте.</li><li>Ошибки и повторы легче обсудить до оплаты.</li><li>Решение принимается на основе фактов, а не догадок.</li></ul></div>
+      <section className="marketingSection">
+        <div className="marketingSectionHeader"><p className="eyebrow">Для кого</p><h2>Один отчёт — разные практические задачи.</h2></div>
+        <div className="audienceGrid">{audiences.map(([title,text,href,action])=><article className="audienceCard" key={title}><span className="proofPill">SmetaCheck KG</span><h3>{title}</h3><p>{text}</p><a href={href}>{action} →</a></article>)}</div>
       </section>
 
-      <section className="ugCta"><h2>Загрузите одну смету и посмотрите, что требует проверки.</h2><p>Это быстрее, чем вручную искать спорные строки по всему файлу. Начните с проекта, который уже есть у вас сейчас.</p><a className="btn" href="/upload">Начать проверку</a></section>
+      <section className="marketingSection">
+        <div className="marketingSectionHeader"><p className="eyebrow">Прозрачность</p><h2>Понимайте не только результат, но и ограничения.</h2></div>
+        <div className="trustGrid">{trust.map(([title,text])=><article className="trustItem" key={title}><b>{title}</b><p>{text}</p></article>)}</div>
+        <div className="demoActions"><a className="btn secondary" href="/security">Как мы обрабатываем данные</a><a className="linkButton" href="/methodology">Методика проверки →</a></div>
+      </section>
+
+      <section className="marketingCta">
+        <p className="eyebrow">Начните с результата</p>
+        <h2>Проверьте пример или загрузите свою смету.</h2>
+        <p>Demo не требует регистрации. Для приватной загрузки, сохранения истории и отчётов понадобится аккаунт.</p>
+        <div className="ugActions"><a className="btn" href="/demo">Проверить demo-смету</a><a className="btn secondary" href="/upload">Загрузить свой файл</a></div>
+      </section>
       <Footer/>
     </main>
-  )
+  );
 }
