@@ -31,6 +31,10 @@ type authResponse struct {
 }
 
 func createAuthToken(user User) (string, error) {
+	return createAuthTokenForSession(user, "")
+}
+
+func createAuthTokenForSession(user User, sessionID string) (string, error) {
 	secret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
 	if secret == "" {
 		return "", fmt.Errorf("JWT_SECRET is required")
@@ -38,6 +42,7 @@ func createAuthToken(user User) (string, error) {
 	now := time.Now().UTC()
 	claims := jwt.MapClaims{
 		"sub": user.ID,
+		"sid": sessionID,
 		"email": user.Email,
 		"name": user.FullName,
 		"iat": now.Unix(),
