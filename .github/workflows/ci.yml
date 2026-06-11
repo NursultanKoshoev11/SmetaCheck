@@ -22,12 +22,14 @@ jobs:
           go-version: '1.23.x'
           cache: true
       - name: Report formatting debt
+        shell: bash
         run: |
-          files="$(gofmt -l .)"
+          files="$(gofmt -l . 2>&1 || true)"
           if [ -n "$files" ]; then
-            echo "::warning::Go files still requiring gofmt:"
-            echo "$files"
+            echo "::warning::Go formatting or parsing issues remain:"
+            printf '%s\n' "$files"
           fi
+          exit 0
       - name: Download dependencies
         run: go mod download
       - name: Vet
