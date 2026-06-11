@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +13,18 @@ import (
 )
 
 const maxAIResponseBytes = 4 * 1024 * 1024
+
+var aiHTTPTransport = &http.Transport{
+	Proxy:                 http.ProxyFromEnvironment,
+	DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+	ForceAttemptHTTP2:     true,
+	MaxIdleConns:          100,
+	MaxIdleConnsPerHost:   20,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   10 * time.Second,
+	ExpectContinueTimeout: time.Second,
+	ResponseHeaderTimeout: 40 * time.Second,
+}
 
 func doAIJSONRequest(ctx context.Context, method, endpoint string, headers map[string]string, payload []byte) ([]byte, http.Header, error) {
 	attempts := int(envInt64("AI_HTTP_MAX_ATTEMPTS", 3))
@@ -22,9 +35,13 @@ func doAIJSONRequest(ctx context.Context, method, endpoint string, headers map[s
 		attempts = 5
 	}
 	timeout := envDuration("AI_TIMEOUT", 45*time.Second)
-	client := &http.Client{Timeout: timeout}
+	client := &http.Client{Timeout: timeout, Transport: aiHTTPTransport}
 	var lastErr error
+
 	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, err
+		}
 		req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(payload))
 		if err != nil {
 			return nil, nil, fmt.Errorf("create AI request: %w", err)
@@ -40,11 +57,14 @@ func doAIJSONRequest(ctx context.Context, method, endpoint string, headers map[s
 		if err != nil {
 			lastErr = fmt.Errorf("AI request failed: %w", err)
 			if attempt < attempts && ctx.Err() == nil {
-				time.Sleep(retryDelay(attempt, ""))
+				if err := waitForRetry(ctx, retryDelay(attempt, "")); err != nil {
+					return nil, nil, err
+				}
 				continue
 			}
 			return nil, nil, lastErr
 		}
+
 		body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxAIResponseBytes+1))
 		resp.Body.Close()
 		if readErr != nil {
@@ -56,13 +76,27 @@ func doAIJSONRequest(ctx context.Context, method, endpoint string, headers map[s
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 			return body, resp.Header, nil
 		}
+
 		lastErr = fmt.Errorf("AI provider returned HTTP %d: %s", resp.StatusCode, compactErrorBody(body))
 		if attempt >= attempts || !retryableAIStatus(resp.StatusCode) {
 			return nil, resp.Header, lastErr
 		}
-		time.Sleep(retryDelay(attempt, resp.Header.Get("Retry-After")))
+		if err := waitForRetry(ctx, retryDelay(attempt, resp.Header.Get("Retry-After"))); err != nil {
+			return nil, resp.Header, err
+		}
 	}
 	return nil, nil, lastErr
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func retryableAIStatus(status int) bool {
