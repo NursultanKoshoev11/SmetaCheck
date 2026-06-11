@@ -13,7 +13,7 @@ type rowScanner interface {
 	Scan(dest ...any) error
 }
 
-func saveEstimate(ctx context.Context, ownerID string, estimate Estimate) error {
+func pgSaveEstimate(ctx context.Context, ownerID string, estimate Estimate) error {
 	pool, err := getDB(ctx)
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func saveEstimate(ctx context.Context, ownerID string, estimate Estimate) error 
 	return tx.Commit(ctx)
 }
 
-func loadEstimates(ctx context.Context, ownerID string) ([]Estimate, error) {
+func pgLoadEstimates(ctx context.Context, ownerID string) ([]Estimate, error) {
 	pool, err := getDB(ctx)
 	if err != nil {
 		return nil, err
@@ -111,7 +111,7 @@ func loadEstimates(ctx context.Context, ownerID string) ([]Estimate, error) {
 	return estimates, nil
 }
 
-func findEstimate(ctx context.Context, ownerID, id string) (Estimate, bool, error) {
+func pgFindEstimate(ctx context.Context, ownerID, id string) (Estimate, bool, error) {
 	pool, err := getDB(ctx)
 	if err != nil {
 		return Estimate{}, false, err
@@ -206,7 +206,7 @@ func loadEstimateChildren(ctx context.Context, pool interface {
 	return findingRows.Err()
 }
 
-func saveCompareResult(ctx context.Context, ownerID string, result CompareResponse) error {
+func pgSaveCompareResult(ctx context.Context, ownerID string, result CompareResponse) error {
 	pool, err := getDB(ctx)
 	if err != nil {
 		return err
