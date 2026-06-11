@@ -150,6 +150,38 @@ CREATE TABLE IF NOT EXISTS ai_reports (
     UNIQUE (owner_id, estimate_id, input_hash, provider, model, prompt_version)
 );
 
+CREATE TABLE IF NOT EXISTS analysis_batches (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','completed','failed')),
+    file_count INTEGER NOT NULL CHECK (file_count > 0),
+    completed_count INTEGER NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    error_message TEXT,
+    report JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    locked_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS analysis_batch_files (
+    id TEXT PRIMARY KEY,
+    batch_id TEXT NOT NULL REFERENCES analysis_batches(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    file_size BIGINT NOT NULL,
+    position INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processing','completed','failed')),
+    estimate_id TEXT REFERENCES estimates(id) ON DELETE SET NULL,
+    error_message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (batch_id, position)
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -178,5 +210,9 @@ CREATE INDEX IF NOT EXISTS idx_compare_results_created_at ON compare_results(cre
 CREATE INDEX IF NOT EXISTS idx_ai_reports_estimate_id ON ai_reports(estimate_id);
 CREATE INDEX IF NOT EXISTS idx_ai_reports_owner_id ON ai_reports(owner_id);
 CREATE INDEX IF NOT EXISTS idx_ai_reports_created_at ON ai_reports(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analysis_batches_owner_created ON analysis_batches(owner_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_analysis_batches_status_locked ON analysis_batches(status, locked_at, created_at);
+CREATE INDEX IF NOT EXISTS idx_analysis_batch_files_batch_position ON analysis_batch_files(batch_id, position);
+CREATE INDEX IF NOT EXISTS idx_analysis_batch_files_estimate ON analysis_batch_files(estimate_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
