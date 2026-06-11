@@ -1,3 +1,13 @@
+ALTER TABLE auth_sessions
+    ADD COLUMN IF NOT EXISTS previous_refresh_token_hash TEXT;
+
+ALTER TABLE auth_sessions
+    ADD COLUMN IF NOT EXISTS rotated_at TIMESTAMPTZ;
+
+CREATE INDEX IF NOT EXISTS idx_auth_sessions_previous_refresh_hash
+    ON auth_sessions(previous_refresh_token_hash)
+    WHERE previous_refresh_token_hash IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS auth_rate_limits (
     key_hash TEXT NOT NULL,
     action TEXT NOT NULL,
