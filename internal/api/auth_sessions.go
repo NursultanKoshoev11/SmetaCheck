@@ -15,9 +15,9 @@ import (
 )
 
 const (
-	accessCookieDev  = "smetacheck_access"
-	refreshCookieDev = "smetacheck_refresh"
-	accessCookieProd = "__Host-smetacheck_access"
+	accessCookieDev   = "smetacheck_access"
+	refreshCookieDev  = "smetacheck_refresh"
+	accessCookieProd  = "__Host-smetacheck_access"
 	refreshCookieProd = "__Host-smetacheck_refresh"
 )
 
@@ -26,7 +26,8 @@ func createBrowserSession(w http.ResponseWriter, r *http.Request, user User) err
 	if err != nil || pool == nil {
 		return fmt.Errorf("postgresql is unavailable")
 	}
-	accessToken, err := createAuthToken(user)
+	sessionID := newDatabaseID("ses")
+	accessToken, err := createAuthTokenForSession(user, sessionID)
 	if err != nil {
 		return err
 	}
@@ -39,7 +40,7 @@ func createBrowserSession(w http.ResponseWriter, r *http.Request, user User) err
 		INSERT INTO auth_sessions (
 			id, user_id, refresh_token_hash, ip_address, user_agent, expires_at
 		) VALUES ($1,$2,$3,$4,$5,$6)
-	`, newDatabaseID("ses"), user.ID, hashToken(refreshToken), requestIP(r), r.UserAgent(), expiresAt)
+	`, sessionID, user.ID, hashToken(refreshToken), requestIP(r), r.UserAgent(), expiresAt)
 	if err != nil {
 		return err
 	}
@@ -82,7 +83,7 @@ func AuthRefresh(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusInternalServerError, "cannot rotate session")
 		return
 	}
-	accessToken, err := createAuthToken(user)
+	accessToken, err := createAuthTokenForSession(user, sessionID)
 	if err != nil {
 		estimateWriteError(w, http.StatusInternalServerError, "cannot create access token")
 		return
@@ -92,7 +93,7 @@ func AuthRefresh(w http.ResponseWriter, r *http.Request) {
 		UPDATE auth_sessions
 		SET refresh_token_hash=$1, expires_at=$2, last_used_at=now(),
 		    ip_address=$3, user_agent=$4
-		WHERE id=$5 AND refresh_token_hash=$6 AND revoked_at IS NULL
+		WHERE id=$5 AND refresh_token_hash=$6 AND revoked_at IS NULL AND expires_at>now()
 	`, hashToken(newRefresh), expiresAt, requestIP(r), r.UserAgent(), sessionID, hashToken(refreshToken))
 	if err != nil || command.RowsAffected() != 1 {
 		clearSessionCookies(w)
