@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 )
@@ -10,14 +11,11 @@ import (
 const defaultAIRowsPerChunk = 250
 
 type aiChunkInput struct {
-	EstimateID    string         `json:"estimate_id"`
-	FileName      string         `json:"file_name"`
-	ChunkIndex    int            `json:"chunk_index"`
-	ChunkCount    int            `json:"chunk_count"`
-	BackendScore  int            `json:"backend_score"`
-	BackendTotal  float64        `json:"backend_total"`
-	Rows          []EstimateItem `json:"rows"`
-	BackendIssues []Finding      `json:"backend_issues"`
+	EstimateID string         `json:"estimate_id"`
+	FileName   string         `json:"file_name"`
+	ChunkIndex int            `json:"chunk_index"`
+	ChunkCount int            `json:"chunk_count"`
+	Rows       []EstimateItem `json:"rows"`
 }
 
 func buildAIProviderInputs(estimates []Estimate) []AIProviderInput {
@@ -35,13 +33,10 @@ func buildAIProviderInputs(estimates []Estimate) []AIProviderInput {
 
 func normalizedEstimateText(estimate Estimate) string {
 	payload := map[string]any{
-		"estimate_id":    estimate.ID,
-		"file_name":      estimate.FileName,
-		"backend_score":  estimate.Score,
-		"backend_total":  estimate.TotalAmount,
-		"items_count":    estimate.ItemsCount,
-		"rows":           estimate.Items,
-		"backend_issues": estimate.Findings,
+		"estimate_id": estimate.ID,
+		"file_name":   estimate.FileName,
+		"items_count": estimate.ItemsCount,
+		"rows":        estimate.Items,
 	}
 	encoded, err := json.Marshal(payload)
 	if err != nil {
@@ -60,13 +55,10 @@ func splitEstimateForAI(estimate Estimate) []aiChunkInput {
 	}
 	if len(estimate.Items) == 0 {
 		return []aiChunkInput{{
-			EstimateID:    estimate.ID,
-			FileName:      estimate.FileName,
-			ChunkIndex:    1,
-			ChunkCount:    1,
-			BackendScore:  estimate.Score,
-			BackendTotal:  estimate.TotalAmount,
-			BackendIssues: estimate.Findings,
+			EstimateID: estimate.ID,
+			FileName:   estimate.FileName,
+			ChunkIndex: 1,
+			ChunkCount: 1,
 		}}
 	}
 	count := (len(estimate.Items) + rowsPerChunk - 1) / rowsPerChunk
@@ -77,40 +69,14 @@ func splitEstimateForAI(estimate Estimate) []aiChunkInput {
 			end = len(estimate.Items)
 		}
 		chunks = append(chunks, aiChunkInput{
-			EstimateID:    estimate.ID,
-			FileName:      estimate.FileName,
-			ChunkIndex:    index,
-			ChunkCount:    count,
-			BackendScore:  estimate.Score,
-			BackendTotal:  estimate.TotalAmount,
-			Rows:          estimate.Items[start:end],
-			BackendIssues: findingsForRows(estimate.Findings, estimate.Items[start:end]),
+			EstimateID: estimate.ID,
+			FileName:   estimate.FileName,
+			ChunkIndex: index,
+			ChunkCount: count,
+			Rows:       estimate.Items[start:end],
 		})
 	}
 	return chunks
-}
-
-func findingsForRows(findings []Finding, rows []EstimateItem) []Finding {
-	if len(rows) == 0 {
-		return findings
-	}
-	minRow, maxRow := rows[0].Row, rows[0].Row
-	for _, row := range rows[1:] {
-		if row.Row < minRow {
-			minRow = row.Row
-		}
-		if row.Row > maxRow {
-			maxRow = row.Row
-		}
-	}
-	result := make([]Finding, 0)
-	for _, finding := range findings {
-		row := extractRowNumber(finding.Detail)
-		if row == 0 || (row >= minRow && row <= maxRow) {
-			result = append(result, finding)
-		}
-	}
-	return result
 }
 
 func mergeAIFileAnalyses(estimate Estimate, chunks []AIFileAnalysis, inputMode string) AIFileAnalysis {
@@ -119,8 +85,6 @@ func mergeAIFileAnalyses(estimate Estimate, chunks []AIFileAnalysis, inputMode s
 		FileName:         estimate.FileName,
 		RiskLevel:        "Низкий",
 		DataQualityScore: 100,
-		ExtractedTotal:   estimate.TotalAmount,
-		RowsAnalyzed:     estimate.ItemsCount,
 		Findings:         make([]AIProviderFinding, 0),
 		Recommendations: make([]string, 0),
 		InputMode:        inputMode,
@@ -128,15 +92,32 @@ func mergeAIFileAnalyses(estimate Estimate, chunks []AIFileAnalysis, inputMode s
 	seenFindings := map[string]struct{}{}
 	seenRecommendations := map[string]struct{}{}
 	summaries := make([]string, 0, len(chunks))
-	qualityTotal, qualityCount := 0, 0
+	qualityWeightedTotal := 0
+	qualityWeight := 0
+	aiTotal := 0.0
+	rowsAnalyzed := 0
+	missingTotals := 0
+
 	for _, chunk := range chunks {
 		result.RiskLevel = higherRiskLevel(result.RiskLevel, chunk.RiskLevel)
+		rowWeight := chunk.RowsAnalyzed
+		if rowWeight < 1 {
+			rowWeight = 1
+		}
 		if chunk.DataQualityScore >= 0 && chunk.DataQualityScore <= 100 {
-			qualityTotal += chunk.DataQualityScore
-			qualityCount++
+			qualityWeightedTotal += chunk.DataQualityScore * rowWeight
+			qualityWeight += rowWeight
 		}
 		if strings.TrimSpace(chunk.Summary) != "" {
 			summaries = append(summaries, strings.TrimSpace(chunk.Summary))
+		}
+		if chunk.RowsAnalyzed > 0 {
+			rowsAnalyzed += chunk.RowsAnalyzed
+		}
+		if chunk.ExtractedTotal > 0 || chunk.RowsAnalyzed == 0 {
+			aiTotal += chunk.ExtractedTotal
+		} else {
+			missingTotals++
 		}
 		for _, finding := range chunk.Findings {
 			finding.FileID = estimate.ID
@@ -160,8 +141,22 @@ func mergeAIFileAnalyses(estimate Estimate, chunks []AIFileAnalysis, inputMode s
 			result.Recommendations = append(result.Recommendations, strings.TrimSpace(recommendation))
 		}
 	}
-	if qualityCount > 0 {
-		result.DataQualityScore = qualityTotal / qualityCount
+
+	if qualityWeight > 0 {
+		result.DataQualityScore = int(math.Round(float64(qualityWeightedTotal) / float64(qualityWeight)))
+	}
+	if rowsAnalyzed > estimate.ItemsCount {
+		rowsAnalyzed = estimate.ItemsCount
+	}
+	result.RowsAnalyzed = rowsAnalyzed
+	result.ExtractedTotal = aiTotal
+	if missingTotals > 0 {
+		result.Warning = appendWarning(result.Warning, fmt.Sprintf("AI не вернул независимую сумму для %d частей файла.", missingTotals))
+	}
+	if rowsAnalyzed < estimate.ItemsCount {
+		result.Warning = appendWarning(result.Warning, fmt.Sprintf(
+			"AI подтвердил анализ %d из %d распознанных строк.", rowsAnalyzed, estimate.ItemsCount,
+		))
 	}
 	if len(summaries) > 0 {
 		result.Summary = strings.Join(summaries, " ")
@@ -176,6 +171,18 @@ func mergeAIFileAnalyses(estimate Estimate, chunks []AIFileAnalysis, inputMode s
 		return result.Findings[i].Row < result.Findings[j].Row
 	})
 	return result
+}
+
+func appendWarning(current, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return strings.TrimSpace(current)
+	}
+	current = strings.TrimSpace(current)
+	if current == "" {
+		return value
+	}
+	return current + " " + value
 }
 
 func normalizedAIFindingKey(finding AIProviderFinding) string {
