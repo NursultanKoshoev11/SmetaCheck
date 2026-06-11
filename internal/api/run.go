@@ -20,6 +20,8 @@ func Run() {
 	mux.HandleFunc("/v1/auth/login", requireMethod(http.MethodPost, AuthLoginPostgres))
 	mux.HandleFunc("/v1/auth/me", requireMethod(http.MethodGet, AuthMe))
 	mux.HandleFunc("/v1/ai/estimate-summary/", requireMethod(http.MethodGet, EstimateAISummaryPostgres))
+	mux.HandleFunc("/v1/analysis-batches", requireMethod(http.MethodPost, AnalysisBatchCreate))
+	mux.HandleFunc("/v1/analysis-batches/", requireMethod(http.MethodGet, AnalysisBatchRouter))
 	mux.HandleFunc("/v1/estimates", requireMethod(http.MethodGet, EstimateListPostgres))
 	mux.HandleFunc("/v1/estimates/upload", requireMethod(http.MethodPost, EstimateUploadPostgres))
 	mux.HandleFunc("/v1/estimates/compare", requireMethod(http.MethodPost, EstimateComparePostgres))
@@ -34,7 +36,7 @@ func Run() {
 		Addr:              addr,
 		Handler:           recoverPanic(requestID(securityHeaders(cors(maxBodyBytes(mux))))),
 		ReadHeaderTimeout: envDuration("SERVER_READ_HEADER_TIMEOUT", 5*time.Second),
-		ReadTimeout:       envDuration("SERVER_READ_TIMEOUT", 30*time.Second),
+		ReadTimeout:       envDuration("SERVER_READ_TIMEOUT", 60*time.Second),
 		WriteTimeout:      envDuration("SERVER_WRITE_TIMEOUT", 60*time.Second),
 		IdleTimeout:       envDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
 		MaxHeaderBytes:    1 << 20,
