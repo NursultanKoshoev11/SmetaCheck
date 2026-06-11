@@ -70,6 +70,7 @@ export default function Upload(){
 
     const formData = new FormData();
     formData.append('file', file);
+    let uploadedEstimate = null;
 
     try{
       const response = await fetch(`${API_BASE}/v1/estimates/upload`, {method:'POST', headers:{Authorization:`Bearer ${token}`}, body:formData});
@@ -80,6 +81,7 @@ export default function Upload(){
         throw new Error('Сессия истекла. Войдите снова.');
       }
       if(!response.ok){ throw new Error(data.error || 'Не удалось загрузить файл'); }
+      uploadedEstimate = data;
       setResult(data);
       setStatus('analyzing');
       setMessage('Файл сохранён. AI готовит структурированный отчёт...');
@@ -93,7 +95,8 @@ export default function Upload(){
         ? 'Смета проверена, OpenAI-анализ сохранён в PostgreSQL.'
         : 'Смета проверена. Использована автоматическая сводка по правилам.');
     }catch(error){
-      if(result){
+      if(uploadedEstimate){
+        setResult(uploadedEstimate);
         setStatus('done');
         setMessage('Смета сохранена, но AI-анализ временно недоступен. Откройте отчёт и повторите запрос.');
       }else{
