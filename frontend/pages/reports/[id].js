@@ -6,11 +6,6 @@ import Footer from '../../components/Footer';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
 
 function money(value){ return Number(value || 0).toLocaleString('ru-RU'); }
-function authHeaders(){
-  if(typeof window === 'undefined') return {};
-  const token = window.localStorage.getItem('smetacheck_token');
-  return token ? {Authorization: `Bearer ${token}`} : {};
-}
 
 export default function ReportDetail(){
   const router = useRouter();
@@ -19,28 +14,101 @@ export default function ReportDetail(){
   const [ai, setAi] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [authorized, setAuthorized] = useState(false);
+  const [downloadLoading, setDownloadLoading] = useState(false);
+
+  function clearSession(){
+    window.localStorage.removeItem('smetacheck_token');
+    window.localStorage.removeItem('smetacheck_user_email');
+    setAuthorized(false);
+  }
 
   async function loadReport(){
     if(!id) return;
+    const token = window.localStorage.getItem('smetacheck_token');
+    if(!token){
+      setAuthorized(false);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try{
-      const response = await fetch(`${API_BASE}/v1/estimates/${id}`, {headers: authHeaders()});
+      const meResponse = await fetch(`${API_BASE}/v1/auth/me`, {headers:{Authorization:`Bearer ${token}`}});
+      if(!meResponse.ok){
+        clearSession();
+        throw new Error('Сессия истекла. Войдите снова.');
+      }
+      setAuthorized(true);
+
+      const response = await fetch(`${API_BASE}/v1/estimates/${id}`, {headers:{Authorization:`Bearer ${token}`}});
       const data = await response.json();
+      if(response.status === 401){
+        clearSession();
+        throw new Error('Сессия истекла. Войдите снова.');
+      }
       if(!response.ok){ throw new Error(data.error || 'Не удалось загрузить отчёт'); }
       setEstimate(data);
-      const aiResponse = await fetch(`${API_BASE}/v1/ai/estimate-summary/${id}`, {headers: authHeaders()});
-      const aiData = await aiResponse.json();
-      if(aiResponse.ok){ setAi(aiData); }
-    }catch(err){ setError(err.message || 'Не удалось загрузить отчёт'); }
-    finally{ setLoading(false); }
+
+      const aiResponse = await fetch(`${API_BASE}/v1/ai/estimate-summary/${id}`, {headers:{Authorization:`Bearer ${token}`}});
+      if(aiResponse.ok){
+        const aiData = await aiResponse.json();
+        setAi(aiData);
+      }
+    }catch(err){
+      setError(err.message || 'Не удалось загрузить отчёт');
+    }finally{
+      setLoading(false);
+    }
+  }
+
+  async function downloadTXT(){
+    if(!estimate) return;
+    const token = window.localStorage.getItem('smetacheck_token');
+    if(!token){
+      clearSession();
+      setError('Сессия истекла. Войдите снова.');
+      return;
+    }
+    setDownloadLoading(true);
+    setError('');
+    try{
+      const response = await fetch(`${API_BASE}/v1/estimates/${estimate.id}/report`, {headers:{Authorization:`Bearer ${token}`}});
+      if(response.status === 401){
+        clearSession();
+        throw new Error('Сессия истекла. Войдите снова.');
+      }
+      if(!response.ok){
+        let message = 'Не удалось скачать TXT-отчёт';
+        try{
+          const data = await response.json();
+          message = data.error || message;
+        }catch{}
+        throw new Error(message);
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${estimate.id}_report.txt`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    }catch(err){
+      setError(err.message || 'Не удалось скачать TXT-отчёт');
+    }finally{
+      setDownloadLoading(false);
+    }
   }
 
   useEffect(()=>{ loadReport(); }, [id]);
 
   const riskStats = useMemo(()=>{
     const stats = {High:0, Medium:0, Low:0, Info:0};
-    (estimate?.findings || []).forEach((finding)=>{ stats[finding.severity] = (stats[finding.severity] || 0) + 1; });
+    (estimate?.findings || []).forEach((finding)=>{
+      stats[finding.severity] = (stats[finding.severity] || 0) + 1;
+    });
     return stats;
   }, [estimate]);
 
@@ -51,10 +119,11 @@ export default function ReportDetail(){
       <Nav/>
       <section className="pageHero compact"><p className="eyebrow">Детальный отчёт</p><h1>{estimate?.file_name || 'Отчёт проверки сметы'}</h1><p>Проверка, риски, AI-вывод и список вопросов к подрядчику в одном месте.</p></section>
       <section className="workspace">
-        {loading && <div className="card"><p>Загружаем отчёт...</p></div>}
-        {error && <div className="card"><h2>Ошибка</h2><p>{error}</p><button className="btn" onClick={loadReport}>Повторить</button></div>}
-        {!loading && !error && estimate && <>
-          <div className="buttonRow"><button className="btn" type="button" onClick={()=>window.print()}>Сохранить как PDF</button><a className="btn secondary" href={`${API_BASE}/v1/estimates/${estimate.id}/report`}>Скачать TXT</a><a className="btn secondary" href="/reports">Все отчёты</a></div>
+        {loading && <div className="card"><p>Проверяем сессию и загружаем отчёт...</p></div>}
+        {!loading && !authorized && <div className="emptyState"><h2>Нужно войти в аккаунт</h2><p>{error || 'Этот отчёт доступен только владельцу аккаунта.'}</p><a className="btn" href="/login">Войти или зарегистрироваться</a></div>}
+        {!loading && authorized && error && <div className="card"><h2>Ошибка</h2><p>{error}</p><button className="btn" onClick={loadReport}>Повторить</button></div>}
+        {!loading && authorized && !error && estimate && <>
+          <div className="buttonRow"><button className="btn" type="button" onClick={()=>window.print()}>Сохранить как PDF</button><button className="btn secondary" type="button" onClick={downloadTXT} disabled={downloadLoading}>{downloadLoading ? 'Скачиваем...' : 'Скачать TXT'}</button><a className="btn secondary" href="/reports">Все отчёты</a></div>
           <div className="twoColumns">
             <article className="card"><div className="scoreMeter" style={{'--score':`${score}%`}}><div><strong>{score}</strong><span>из 100</span></div></div><h2>Итоговая оценка</h2><p>Чем выше оценка, тем меньше автоматических замечаний найдено в смете.</p></article>
             <article className="card aiExpertCard"><p className="eyebrow">AI Expert Review</p><h2>Вывод по смете</h2>{ai ? <><p><b>Риск: {ai.risk_level}</b> · Качество данных: <b>{ai.data_quality_score || score}/100</b></p><p>{ai.executive_brief}</p><p>{ai.recommendation}</p></> : <p>AI-вывод пока недоступен.</p>}</article>
@@ -72,5 +141,5 @@ export default function ReportDetail(){
       </section>
       <Footer/>
     </main>
-  )
+  );
 }
