@@ -10,11 +10,13 @@ import (
 )
 
 type User struct {
-	ID           string    `json:"id"`
-	Email        string    `json:"email"`
-	FullName     string    `json:"full_name"`
-	PasswordHash string    `json:"-"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID              string     `json:"id"`
+	Email           string     `json:"email,omitempty"`
+	FullName        string     `json:"full_name"`
+	AvatarURL       string     `json:"avatar_url,omitempty"`
+	PasswordHash    string     `json:"-"`
+	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty"`
+	CreatedAt       time.Time  `json:"created_at"`
 }
 
 type authRequest struct {
@@ -24,7 +26,7 @@ type authRequest struct {
 }
 
 type authResponse struct {
-	Token string `json:"token"`
+	Token string `json:"token,omitempty"`
 	User  User   `json:"user"`
 }
 
@@ -33,12 +35,24 @@ func createAuthToken(user User) (string, error) {
 	if secret == "" {
 		return "", fmt.Errorf("JWT_SECRET is required")
 	}
+	now := time.Now().UTC()
 	claims := jwt.MapClaims{
 		"sub": user.ID,
 		"email": user.Email,
 		"name": user.FullName,
-		"iat": time.Now().Unix(),
-		"exp": time.Now().Add(24 * time.Hour).Unix(),
+		"iat": now.Unix(),
+		"nbf": now.Unix(),
+		"exp": now.Add(15 * time.Minute).Unix(),
+		"iss": authIssuer(),
+		"aud": "smetacheck-api",
 	}
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
+}
+
+func authIssuer() string {
+	issuer := strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")), "/")
+	if issuer == "" {
+		return "smetacheck"
+	}
+	return issuer
 }
