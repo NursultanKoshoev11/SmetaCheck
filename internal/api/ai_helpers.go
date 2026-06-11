@@ -31,20 +31,25 @@ func decodeAIFileAnalysis(data []byte, estimate Estimate, inputMode string) (AIF
 	report.FileName = estimate.FileName
 	report.InputMode = inputMode
 	report.RiskLevel = normalizeRiskLevel(report.RiskLevel)
-	if report.DataQualityScore < 0 {
-		report.DataQualityScore = 0
+	report.DataQualityScore = clampScore(report.DataQualityScore)
+
+	if report.RowsAnalyzed < 0 {
+		report.RowsAnalyzed = 0
 	}
-	if report.DataQualityScore > 100 {
-		report.DataQualityScore = 100
-	}
-	if report.RowsAnalyzed < 0 || report.RowsAnalyzed > estimate.ItemsCount {
+	if isNormalizedInputMode(inputMode) && report.RowsAnalyzed > estimate.ItemsCount {
 		report.RowsAnalyzed = estimate.ItemsCount
+	}
+	if !isNormalizedInputMode(inputMode) && report.RowsAnalyzed > 1_000_000 {
+		return AIFileAnalysis{}, fmt.Errorf("raw document analysis returned an unreasonable row count")
 	}
 	if report.ExtractedTotal < 0 {
 		report.ExtractedTotal = 0
 	}
 	if report.Findings == nil {
 		report.Findings = []AIProviderFinding{}
+	}
+	if len(report.Findings) > 100 {
+		report.Findings = report.Findings[:100]
 	}
 	for index := range report.Findings {
 		report.Findings[index].FileID = estimate.ID
@@ -55,11 +60,25 @@ func decodeAIFileAnalysis(data []byte, estimate Estimate, inputMode string) (AIF
 		if strings.TrimSpace(report.Findings[index].Category) == "" {
 			report.Findings[index].Category = "other"
 		}
+		report.Findings[index].Title = strings.TrimSpace(report.Findings[index].Title)
+		report.Findings[index].Detail = strings.TrimSpace(report.Findings[index].Detail)
+		report.Findings[index].Evidence = strings.TrimSpace(report.Findings[index].Evidence)
+		report.Findings[index].SuggestedAction = strings.TrimSpace(report.Findings[index].SuggestedAction)
 	}
 	if report.Recommendations == nil {
 		report.Recommendations = []string{}
 	}
+	if len(report.Recommendations) > 20 {
+		report.Recommendations = report.Recommendations[:20]
+	}
+	report.Summary = strings.TrimSpace(report.Summary)
+	report.Warning = strings.TrimSpace(report.Warning)
 	return report, nil
+}
+
+func isNormalizedInputMode(inputMode string) bool {
+	mode := strings.ToLower(strings.TrimSpace(inputMode))
+	return strings.HasPrefix(mode, "normalized_")
 }
 
 func normalizeRiskLevel(value string) string {
@@ -112,5 +131,5 @@ func aiFileAnalysisJSONSchema() map[string]any {
 }
 
 func aiAuditInstructions() string {
-	return "Ты независимый аудитор строительных смет. Анализируй все переданные данные полностью. Не доверяй backend findings автоматически: проверь строки самостоятельно, затем используй backend findings только как дополнительный сигнал. Не придумывай отсутствующие цены, нормы, объёмы или рыночные данные. Денежные вычисления перепроверяй по переданным количеству, цене и сумме. Каждое замечание привязывай к file_id и row, если строка известна. Возвращай только JSON по заданной схеме на русском языке."
+	return "Ты независимый аудитор строительных смет. Анализируй все переданные строки или страницы документа полностью и самостоятельно. Не придумывай отсутствующие цены, нормы, объёмы или рыночные данные. Денежные вычисления перепроверяй по переданным количеству, цене и сумме. Каждое замечание привязывай к file_id и row, если строка известна. extracted_total должен быть независимо рассчитанной суммой по данным, которые ты реально проанализировал. rows_analyzed должен отражать реально проверенное число строк. Возвращай только JSON по заданной схеме на русском языке."
 }
