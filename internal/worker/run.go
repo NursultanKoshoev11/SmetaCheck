@@ -39,7 +39,7 @@ func Run() {
 			return
 		case <-ticker.C:
 			for {
-				claimed, err := api.ProcessNextAnalysisBatch(ctx)
+				claimed, err := api.ProcessNextAnalysisBatchSafe(ctx)
 				if err != nil {
 					log.Printf("analysis batch processing error: %v", err)
 					break
