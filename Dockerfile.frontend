@@ -1,12 +1,13 @@
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY frontend/package*.json ./
-RUN npm install
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 
 FROM node:20-alpine AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-ARG NEXT_PUBLIC_API_BASE=http://localhost:8080
+ARG NEXT_PUBLIC_API_BASE
 ENV NEXT_PUBLIC_API_BASE=$NEXT_PUBLIC_API_BASE
 COPY --from=deps /app/node_modules ./node_modules
 COPY frontend/ ./
@@ -17,7 +18,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup -S smetacheck && adduser -S smetacheck -G smetacheck
-COPY --from=build --chown=smetacheck:smetacheck /app ./
+COPY --from=build --chown=smetacheck:smetacheck /app/package.json /app/package-lock.json ./
+COPY --from=build --chown=smetacheck:smetacheck /app/node_modules ./node_modules
+COPY --from=build --chown=smetacheck:smetacheck /app/.next ./.next
 USER smetacheck
 EXPOSE 3000
-CMD ["npm", "run", "start"]
+ENTRYPOINT ["npm", "run", "start"]

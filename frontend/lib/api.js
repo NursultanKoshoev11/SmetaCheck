@@ -20,12 +20,16 @@ export async function apiFetch(path, options = {}, retry = true) {
   return response;
 }
 
+export async function readJSON(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try { return JSON.parse(text); }
+  catch { return {error: text}; }
+}
+
 export async function apiJSON(path, options = {}) {
   const response = await apiFetch(path, options);
-  const text = await response.text();
-  let data = {};
-  try { data = text ? JSON.parse(text) : {}; }
-  catch { data = {error: text}; }
+  const data = await readJSON(response);
   return {response, data};
 }
 
