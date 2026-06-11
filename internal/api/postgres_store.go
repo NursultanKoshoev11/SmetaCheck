@@ -141,9 +141,10 @@ func pgFindEstimate(ctx context.Context, ownerID, id string) (Estimate, bool, er
 
 func scanEstimate(scanner rowScanner) (Estimate, error) {
 	var estimate Estimate
+	var ownerID string
 	err := scanner.Scan(
 		&estimate.ID,
-		&estimate.OwnerID,
+		&ownerID,
 		&estimate.FileName,
 		&estimate.Status,
 		&estimate.Score,
