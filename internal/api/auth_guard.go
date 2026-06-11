@@ -10,9 +10,10 @@ import (
 )
 
 type RequestUser struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
+	ID        string `json:"id"`
+	SessionID string `json:"-"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
 }
 
 func currentRequestUser(r *http.Request) (RequestUser, bool) {
@@ -44,9 +45,28 @@ func currentRequestUser(r *http.Request) (RequestUser, bool) {
 
 	user := RequestUser{}
 	if value, ok := claims["sub"].(string); ok { user.ID = value }
+	if value, ok := claims["sid"].(string); ok { user.SessionID = value }
 	if value, ok := claims["email"].(string); ok { user.Email = value }
 	if value, ok := claims["name"].(string); ok { user.Name = value }
-	return user, user.ID != ""
+	if user.ID == "" || user.SessionID == "" {
+		return RequestUser{}, false
+	}
+
+	pool, err := getDB(r.Context())
+	if err != nil || pool == nil {
+		return RequestUser{}, false
+	}
+	var active bool
+	err = pool.QueryRow(r.Context(), `
+		SELECT EXISTS (
+			SELECT 1 FROM auth_sessions
+			WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL AND expires_at>now()
+		)
+	`, user.SessionID, user.ID).Scan(&active)
+	if err != nil || !active {
+		return RequestUser{}, false
+	}
+	return user, true
 }
 
 func requireUserForProduction(w http.ResponseWriter, r *http.Request) (RequestUser, bool) {
