@@ -126,7 +126,10 @@ func EstimateDetailRouterPostgres(w http.ResponseWriter, r *http.Request) {
 	if len(parts) == 2 && parts[1] == "report" {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", estimate.ID+"_report.txt"))
-		http.ServeFile(w, r, estimate.ReportPath)
+		analysis := generateAISummary(r.Context(), user.ID, estimate)
+		if err := writeAIEnhancedTextReport(w, estimate, analysis); err != nil {
+			return
+		}
 		return
 	}
 	if len(parts) == 1 {
