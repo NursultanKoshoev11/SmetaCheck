@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -108,8 +109,7 @@ func buildAISummary(estimate Estimate) AISummaryResponse {
 		keyRisks = keyRisks[:8]
 	}
 
-	largeItems := 0
-	zeroValueItems := 0
+	largeItems, zeroValueItems := 0, 0
 	for _, item := range estimate.Items {
 		if item.Total > 5000000 || item.UnitPrice > 1000000 {
 			largeItems++
@@ -119,20 +119,19 @@ func buildAISummary(estimate Estimate) AISummaryResponse {
 		}
 	}
 	if largeItems > 0 {
-		costFlags = append(costFlags, pluralCount(largeItems, "крупная позиция требует", "крупные позиции требуют", "крупных позиций требуют")+" ручной проверки.")
+		costFlags = append(costFlags, fmt.Sprintf("Крупных позиций, требующих ручной проверки: %d.", largeItems))
 	}
 	if zeroValueItems > 0 {
-		costFlags = append(costFlags, pluralCount(zeroValueItems, "позиция содержит", "позиции содержат", "позиций содержат")+" нулевые или пустые значения.")
+		costFlags = append(costFlags, fmt.Sprintf("Позиций с нулевыми или пустыми значениями: %d.", zeroValueItems))
 	}
 	if estimate.TotalAmount > 0 {
-		costFlags = append(costFlags, moneySentence(estimate.TotalAmount))
+		costFlags = append(costFlags, fmt.Sprintf("Сумма по распознанным позициям: %.2f сом.", estimate.TotalAmount))
 	}
 
-	dataQuality := estimate.Score
+	dataQuality := clampScore(estimate.Score)
 	if estimate.ItemsCount == 0 {
 		dataQuality = 0
 	}
-	dataQuality = clampScore(dataQuality)
 
 	riskLevel := "Низкий"
 	if estimate.ItemsCount == 0 {
@@ -143,7 +142,6 @@ func buildAISummary(estimate Estimate) AISummaryResponse {
 		riskLevel = "Средний"
 	}
 
-	brief := ruleBasedBrief(estimate, high, medium, dataQuality)
 	priorityActions := make([]string, 0)
 	if high > 0 {
 		priorityActions = append(priorityActions, "Сначала исправить High-замечания: пустые цены, неправильные суммы и критичные расхождения.")
@@ -159,16 +157,15 @@ func buildAISummary(estimate Estimate) AISummaryResponse {
 	}
 	priorityActions = append(priorityActions, "После исправлений повторно загрузить смету и сравнить версии.")
 
-	questions := buildRuleQuestions(estimate)
 	return AISummaryResponse{
 		EstimateID:       estimate.ID,
-		ExecutiveBrief:   brief,
+		ExecutiveBrief:   ruleBasedBrief(estimate, high, medium, dataQuality),
 		RiskLevel:        riskLevel,
 		DataQualityScore: dataQuality,
 		KeyRisks:         keyRisks,
 		PriorityActions:  priorityActions,
 		CostFlags:        costFlags,
-		Questions:        questions,
+		Questions:        buildRuleQuestions(estimate),
 		Recommendation:   "Используйте сводку как список вопросов к прорабу, сметчику или подрядчику. Расчёты и найденные строки являются источником фактов; финальное решение принимает ответственный специалист.",
 		ChartData:        buildRiskChart(estimate.Findings),
 		AnalysisSource:   "rules",
@@ -212,6 +209,7 @@ func buildRiskChart(findings []Finding) []AIChartPoint {
 
 func normalizeAIReport(report AISummaryResponse, estimate Estimate) AISummaryResponse {
 	report.DataQualityScore = clampScore(report.DataQualityScore)
+	fallback := buildAISummary(estimate)
 	if estimate.ItemsCount == 0 {
 		report.RiskLevel = "Не определён"
 		report.DataQualityScore = 0
@@ -219,9 +217,8 @@ func normalizeAIReport(report AISummaryResponse, estimate Estimate) AISummaryRes
 	switch report.RiskLevel {
 	case "Низкий", "Средний", "Высокий", "Не определён":
 	default:
-		report.RiskLevel = buildAISummary(estimate).RiskLevel
+		report.RiskLevel = fallback.RiskLevel
 	}
-	fallback := buildAISummary(estimate)
 	if strings.TrimSpace(report.ExecutiveBrief) == "" {
 		report.ExecutiveBrief = fallback.ExecutiveBrief
 	}
@@ -257,16 +254,16 @@ func ruleBasedBrief(estimate Estimate, high, medium, dataQuality int) string {
 	if estimate.ItemsCount == 0 {
 		return "Система не смогла распознать позиции сметы. AI-анализ финансовых рисков недоступен, пока файл не будет корректно прочитан."
 	}
-	brief := "Смета проанализирована по распознанным строкам и детерминированным проверкам."
+	brief := fmt.Sprintf("Распознано %d позиций на сумму %.2f сом.", estimate.ItemsCount, estimate.TotalAmount)
 	if high > 0 {
-		brief += " Есть замечания высокого риска, которые нужно проверить до оплаты или утверждения бюджета."
+		brief += fmt.Sprintf(" Замечаний высокого риска: %d.", high)
 	} else if medium > 0 {
-		brief += " Есть замечания среднего риска, которые нужно обсудить с подрядчиком."
+		brief += fmt.Sprintf(" Замечаний среднего риска: %d.", medium)
 	} else {
 		brief += " Критичных рисков по базовым правилам не найдено."
 	}
 	if dataQuality < 70 {
-		brief += " Качество исходных данных низкое, поэтому выводы требуют дополнительной ручной проверки."
+		brief += " Качество исходных данных низкое, выводы требуют ручной проверки."
 	}
 	return brief
 }
@@ -286,23 +283,4 @@ func buildRuleQuestions(estimate Estimate) []string {
 		questions = append(questions, "Совпадает ли итоговая сумма с договором и фактическим объёмом работ?")
 	}
 	return questions
-}
-
-func pluralCount(count int, one, few, many string) string {
-	word := many
-	mod10, mod100 := count%10, count%100
-	if mod10 == 1 && mod100 != 11 {
-		word = one
-	} else if mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) {
-		word = few
-	}
-	return strings.TrimSpace(strings.Join([]string{itoa(count), word}, " "))
-}
-
-func itoa(value int) string {
-	return json.Number(string(rune('0' + value))).String()
-}
-
-func moneySentence(total float64) string {
-	return "Общая сумма по распознанным позициям сохранена в отчёте и должна быть сверена с итогом исходного документа."
 }
