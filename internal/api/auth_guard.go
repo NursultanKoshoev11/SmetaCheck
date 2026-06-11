@@ -19,12 +19,17 @@ func currentRequestUser(r *http.Request) (RequestUser, bool) {
 	if header == "" || !strings.HasPrefix(strings.ToLower(header), "bearer ") {
 		return RequestUser{}, false
 	}
-	tokenText := strings.TrimSpace(header[7:])
 	secret := strings.TrimSpace(os.Getenv("JWT_SECRET"))
 	if secret == "" {
-		secret = "development_only_smetacheck_jwt_secret_replace_in_production_64_chars_minimum"
+		return RequestUser{}, false
 	}
-	token, err := jwt.Parse(tokenText, func(token *jwt.Token) (any, error) { return []byte(secret), nil })
+	tokenText := strings.TrimSpace(header[7:])
+	token, err := jwt.Parse(tokenText, func(token *jwt.Token) (any, error) {
+		if token.Method != jwt.SigningMethodHS256 {
+			return nil, jwt.ErrSignatureInvalid
+		}
+		return []byte(secret), nil
+	})
 	if err != nil || !token.Valid {
 		return RequestUser{}, false
 	}
@@ -41,12 +46,9 @@ func currentRequestUser(r *http.Request) (RequestUser, bool) {
 
 func requireUserForProduction(w http.ResponseWriter, r *http.Request) (RequestUser, bool) {
 	user, ok := currentRequestUser(r)
-	if ok {
-		return user, true
-	}
-	if os.Getenv("APP_ENV") == "production" {
+	if !ok {
 		estimateWriteError(w, http.StatusUnauthorized, "authentication required")
 		return RequestUser{}, false
 	}
-	return RequestUser{}, true
+	return user, true
 }
