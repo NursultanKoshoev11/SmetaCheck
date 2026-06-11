@@ -1,0 +1,17 @@
+services:
+  api:
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE}
+    environment:
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE}
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  bot:
+    profiles:
+      - telegram-bot
