@@ -21,8 +21,12 @@ func securityHeaders(next http.Handler) http.Handler {
 
 func cors(next http.Handler) http.Handler {
 	allowed := parseAllowedOrigins(os.Getenv("ALLOWED_ORIGINS"))
+	if os.Getenv("APP_ENV") != "production" {
+		allowed["http://localhost:3000"] = true
+		allowed["http://127.0.0.1:3000"] = true
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		origin := r.Header.Get("Origin")
+		origin := strings.TrimSpace(r.Header.Get("Origin"))
 		if origin != "" && allowed[origin] {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
@@ -30,12 +34,14 @@ func cors(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 		}
-
 		if r.Method == http.MethodOptions {
+			if origin != "" && !allowed[origin] {
+				http.Error(w, "origin not allowed", http.StatusForbidden)
+				return
+			}
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }
