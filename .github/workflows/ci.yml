@@ -6,10 +6,18 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   go:
     name: Go checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,39 +28,77 @@ jobs:
           go-version: '1.23.x'
           cache: true
 
-      - name: Check formatting
-        run: test -z "$(gofmt -l .)"
-
       - name: Download dependencies
         run: go mod download
+
+      - name: Verify modules are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
 
       - name: Vet
         run: go vet ./...
 
-      - name: Test
-        run: go test ./...
+      - name: Test with race detector
+        run: go test -race -count=1 ./...
 
-      - name: Build API
-        run: go build ./cmd/api
+      - name: Build all commands
+        run: |
+          go build ./cmd/api
+          go build ./cmd/worker
+          go build ./cmd/bot
 
-      - name: Build worker
-        run: go build ./cmd/worker
-
-      - name: Build bot
-        run: go build ./cmd/bot
-
-  docker:
-    name: Docker builds
+  frontend:
+    name: Frontend build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build frontend
+        env:
+          NEXT_PUBLIC_API_BASE: http://127.0.0.1:8080
+        run: npm run build
+
+  docker:
+    name: Docker and Compose checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Prepare compose environment
+        run: cp .env.example .env
+
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
       - name: Build API image
-        run: docker build -f Dockerfile.api .
+        run: docker build -f Dockerfile.api -t smetacheck-api:ci .
 
       - name: Build worker image
-        run: docker build -f Dockerfile.worker .
+        run: docker build -f Dockerfile.worker -t smetacheck-worker:ci .
+
+      - name: Build frontend image
+        run: docker build --build-arg NEXT_PUBLIC_API_BASE=http://127.0.0.1:8080 -f Dockerfile.frontend -t smetacheck-frontend:ci .
 
       - name: Build bot image
-        run: docker build -f Dockerfile.bot .
+        run: docker build -f Dockerfile.bot -t smetacheck-bot:ci .
