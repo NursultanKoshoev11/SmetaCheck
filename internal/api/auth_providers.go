@@ -7,16 +7,20 @@ import (
 )
 
 type authProviderStatus struct {
-	Email    bool `json:"email"`
-	Google   bool `json:"google"`
-	Telegram bool `json:"telegram"`
+	EmailLogin        bool `json:"email_login"`
+	EmailRegistration bool `json:"email_registration"`
+	PasswordReset     bool `json:"password_reset"`
+	Google            bool `json:"google"`
+	Telegram          bool `json:"telegram"`
 }
 
 func AuthProviders(w http.ResponseWriter, r *http.Request) {
 	status := authProviderStatus{
-		Email: smtpConfigured(),
-		Google: googleOIDCConfigured(),
-		Telegram: telegramOIDCConfigured(),
+		EmailLogin:        true,
+		EmailRegistration: smtpConfigured(),
+		PasswordReset:     smtpConfigured(),
+		Google:            googleOIDCConfigured(),
+		Telegram:          telegramOIDCConfigured(),
 	}
 	estimateWriteJSON(w, http.StatusOK, map[string]any{"providers": status})
 }
