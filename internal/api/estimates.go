@@ -6,15 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/xuri/excelize/v2"
@@ -56,156 +53,6 @@ type columnMap struct {
 	Quantity  int
 	UnitPrice int
 	Total     int
-}
-
-var estimateStoreMu sync.Mutex
-
-func EstimateUpload(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseMultipartForm(envInt64("MAX_UPLOAD_MB", 25) * 1024 * 1024); err != nil {
-		estimateWriteError(w, http.StatusBadRequest, "invalid upload form")
-		return
-	}
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		estimateWriteError(w, http.StatusBadRequest, "file field is required")
-		return
-	}
-	defer file.Close()
-
-	id := newEstimateID()
-	fileName := sanitizeFileName(header.Filename)
-	if fileName == "" {
-		fileName = "estimate-file"
-	}
-
-	uploadDir := estimateUploadDir()
-	reportDir := estimateReportDir()
-	if err := os.MkdirAll(uploadDir, 0o750); err != nil {
-		estimateWriteError(w, http.StatusInternalServerError, "cannot create upload directory")
-		return
-	}
-	if err := os.MkdirAll(reportDir, 0o750); err != nil {
-		estimateWriteError(w, http.StatusInternalServerError, "cannot create report directory")
-		return
-	}
-
-	storedPath := filepath.Join(uploadDir, id+"_"+fileName)
-	storedFile, err := os.OpenFile(storedPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
-	if err != nil {
-		estimateWriteError(w, http.StatusInternalServerError, "cannot store uploaded file")
-		return
-	}
-	written, copyErr := io.Copy(storedFile, file)
-	closeErr := storedFile.Close()
-	if copyErr != nil || closeErr != nil {
-		_ = os.Remove(storedPath)
-		estimateWriteError(w, http.StatusInternalServerError, "cannot save uploaded file")
-		return
-	}
-
-	items, findings := analyzeEstimateFile(storedPath, fileName, written)
-	totalAmount := sumItemsTotal(items)
-	estimate := Estimate{
-		ID:          id,
-		FileName:    fileName,
-		Status:      estimateStatus(findings),
-		Score:       scoreFromFindings(findings),
-		FileSize:    written,
-		UploadedAt:  time.Now().UTC(),
-		ItemsCount:  len(items),
-		TotalAmount: totalAmount,
-		Findings:    findings,
-		Items:       items,
-		FilePath:    storedPath,
-		ReportPath:  filepath.Join(reportDir, id+"_report.txt"),
-	}
-
-	if err := writeEstimateReport(estimate); err != nil {
-		estimateWriteError(w, http.StatusInternalServerError, "cannot create report")
-		return
-	}
-	if err := saveEstimate(estimate); err != nil {
-		estimateWriteError(w, http.StatusInternalServerError, "cannot save estimate metadata")
-		return
-	}
-
-	estimateWriteJSON(w, http.StatusCreated, estimate)
-}
-
-func EstimateList(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
-		estimateWriteError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	estimates, err := loadEstimates()
-	if err != nil {
-		estimateWriteError(w, http.StatusInternalServerError, "cannot load estimates")
-		return
-	}
-	sort.Slice(estimates, func(i, j int) bool { return estimates[i].UploadedAt.After(estimates[j].UploadedAt) })
-	estimateWriteJSON(w, http.StatusOK, map[string]any{"estimates": estimates})
-}
-
-func EstimateDetailRouter(w http.ResponseWriter, r *http.Request) {
-	path := strings.TrimPrefix(r.URL.Path, "/v1/estimates/")
-	parts := strings.Split(strings.Trim(path, "/"), "/")
-	if len(parts) == 0 || parts[0] == "" {
-		estimateWriteError(w, http.StatusNotFound, "estimate not found")
-		return
-	}
-
-	id := parts[0]
-	if len(parts) == 2 && parts[1] == "report" {
-		handleEstimateReport(w, r, id)
-		return
-	}
-	if len(parts) == 1 {
-		handleEstimateDetail(w, r, id)
-		return
-	}
-
-	estimateWriteError(w, http.StatusNotFound, "endpoint not found")
-}
-
-func handleEstimateDetail(w http.ResponseWriter, r *http.Request, id string) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
-		estimateWriteError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	estimate, ok, err := findEstimate(id)
-	if err != nil {
-		estimateWriteError(w, http.StatusInternalServerError, "cannot load estimate")
-		return
-	}
-	if !ok {
-		estimateWriteError(w, http.StatusNotFound, "estimate not found")
-		return
-	}
-	estimateWriteJSON(w, http.StatusOK, estimate)
-}
-
-func handleEstimateReport(w http.ResponseWriter, r *http.Request, id string) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
-		estimateWriteError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	estimate, ok, err := findEstimate(id)
-	if err != nil {
-		estimateWriteError(w, http.StatusInternalServerError, "cannot load estimate")
-		return
-	}
-	if !ok {
-		estimateWriteError(w, http.StatusNotFound, "estimate not found")
-		return
-	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", estimate.ID+"_report.txt"))
-	http.ServeFile(w, r, estimate.ReportPath)
 }
 
 func analyzeEstimateFile(path string, fileName string, size int64) ([]EstimateItem, []Finding) {
@@ -297,8 +144,8 @@ func detectColumns(rows [][]string) (int, columnMap) {
 	}
 	for i := 0; i < limit; i++ {
 		candidate := columnMap{Name: -1, Unit: -1, Quantity: -1, UnitPrice: -1, Total: -1}
-		for j, cell := range rows[i] {
-			n := normalizeHeader(cell)
+		for j, cellValue := range rows[i] {
+			n := normalizeHeader(cellValue)
 			switch {
 			case containsAny(n, "наименование", "работ", "материал", "описание", "позиция") && candidate.Name < 0:
 				candidate.Name = j
@@ -325,7 +172,7 @@ func detectColumns(rows [][]string) (int, columnMap) {
 		}
 	}
 	if bestScore < 3 {
-		best = columnMap{Name: 1, Unit: 2, Quantity: 3, UnitPrice: 4, Total: 5}
+		best = columnMap{Name: 0, Unit: 1, Quantity: 2, UnitPrice: 3, Total: 4}
 		bestRow = 0
 	}
 	return bestRow, best
@@ -383,7 +230,7 @@ func validateItems(items []EstimateItem) []Finding {
 		}
 		key := normalizeDuplicateKey(item.Name, item.Unit)
 		if key != "" {
-			if prev, ok := seen[key]; ok {
+			if prev, exists := seen[key]; exists {
 				findings = append(findings, Finding{Title: "Возможный дубль", Severity: "Medium", Detail: fmt.Sprintf("Строки %d и %d похожи по названию и единице измерения.", prev, item.Row)})
 			} else {
 				seen[key] = item.Row
@@ -408,50 +255,8 @@ func writeEstimateReport(estimate Estimate) error {
 		b.WriteString(fmt.Sprintf("%d. [%s] %s — %s\n", i+1, finding.Severity, finding.Title, finding.Detail))
 	}
 	b.WriteString("\nРекомендация\n")
-	b.WriteString("Проверьте строки с высоким и средним риском до оплаты или утверждения бюджета. Используйте отчёт как список вопросов к прорабу, сметчику или подрядчику.\n")
+	b.WriteString("Проверьте строки с высоким и средним риском до оплаты или утверждения бюджета.\n")
 	return os.WriteFile(estimate.ReportPath, []byte(b.String()), 0o640)
-}
-
-func saveEstimate(estimate Estimate) error {
-	estimateStoreMu.Lock()
-	defer estimateStoreMu.Unlock()
-	estimates, err := loadEstimatesUnlocked()
-	if err != nil { return err }
-	estimates = append(estimates, estimate)
-	return writeEstimatesUnlocked(estimates)
-}
-
-func findEstimate(id string) (Estimate, bool, error) {
-	estimates, err := loadEstimates()
-	if err != nil { return Estimate{}, false, err }
-	for _, estimate := range estimates {
-		if estimate.ID == id { return estimate, true, nil }
-	}
-	return Estimate{}, false, nil
-}
-
-func loadEstimates() ([]Estimate, error) {
-	estimateStoreMu.Lock()
-	defer estimateStoreMu.Unlock()
-	return loadEstimatesUnlocked()
-}
-
-func loadEstimatesUnlocked() ([]Estimate, error) {
-	path := estimateStorePath()
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) { return []Estimate{}, nil }
-	if err != nil { return nil, err }
-	var estimates []Estimate
-	if err := json.Unmarshal(data, &estimates); err != nil { return nil, err }
-	return estimates, nil
-}
-
-func writeEstimatesUnlocked(estimates []Estimate) error {
-	path := estimateStorePath()
-	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil { return err }
-	data, err := json.MarshalIndent(estimates, "", "  ")
-	if err != nil { return err }
-	return os.WriteFile(path, data, 0o640)
 }
 
 func scoreFromFindings(findings []Finding) int {
@@ -483,10 +288,7 @@ func sumItemsTotal(items []EstimateItem) float64 {
 
 func normalizeHeader(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
-	value = strings.ReplaceAll(value, " ", "")
-	value = strings.ReplaceAll(value, "-", "")
-	value = strings.ReplaceAll(value, "_", "")
-	value = strings.ReplaceAll(value, ".", "")
+	for _, old := range []string{" ", "-", "_", "."} { value = strings.ReplaceAll(value, old, "") }
 	return value
 }
 
@@ -525,9 +327,7 @@ func normalizeDuplicateKey(name, unit string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
 	unit = strings.ToLower(strings.TrimSpace(unit))
 	if len(name) < 4 { return "" }
-	for _, old := range []string{",", ".", ";", ":", "-", "_", "  "} {
-		name = strings.ReplaceAll(name, old, " ")
-	}
+	for _, old := range []string{",", ".", ";", ":", "-", "_", "  "} { name = strings.ReplaceAll(name, old, " ") }
 	return strings.Join(strings.Fields(name), " ") + "|" + unit
 }
 
@@ -540,8 +340,6 @@ func estimateReportDir() string {
 	if value := strings.TrimSpace(os.Getenv("REPORT_DIR")); value != "" { return value }
 	return filepath.Join(os.TempDir(), "smetacheck", "reports")
 }
-
-func estimateStorePath() string { return filepath.Join(estimateReportDir(), "estimates.json") }
 
 func sanitizeFileName(name string) string {
 	name = filepath.Base(strings.TrimSpace(name))
@@ -556,7 +354,7 @@ func sanitizeFileName(name string) string {
 func newEstimateID() string {
 	buf := make([]byte, 12)
 	if _, err := rand.Read(buf); err != nil { return fmt.Sprintf("est_%d", time.Now().UnixNano()) }
-	return hex.EncodeToString(buf)
+	return "est_" + hex.EncodeToString(buf)
 }
 
 func estimateWriteJSON(w http.ResponseWriter, status int, payload any) {
