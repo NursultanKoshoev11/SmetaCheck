@@ -49,7 +49,7 @@ func configuredAIProvider(requestedProvider, requestedModel string) (EstimateAIP
 		if model == "" {
 			model = envString("OPENAI_MODEL", "gpt-4.1-mini")
 		}
-		return &openAIProvider{model: model}, nil
+		return &openAIRawProvider{model: model}, nil
 	case "gemini":
 		if strings.TrimSpace(os.Getenv("GEMINI_API_KEY")) == "" {
 			return nil, fmt.Errorf("GEMINI_API_KEY is not configured")
@@ -57,7 +57,7 @@ func configuredAIProvider(requestedProvider, requestedModel string) (EstimateAIP
 		if model == "" {
 			model = envString("GEMINI_MODEL", "gemini-2.5-flash")
 		}
-		return &geminiAIProvider{model: model}, nil
+		return &geminiRawProvider{model: model}, nil
 	case "anthropic", "claude":
 		if strings.TrimSpace(os.Getenv("ANTHROPIC_API_KEY")) == "" {
 			return nil, fmt.Errorf("ANTHROPIC_API_KEY is not configured")
