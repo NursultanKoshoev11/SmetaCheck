@@ -15,16 +15,18 @@ export default function Nav(){
     window.location.replace('/login');
   }
 
-  return <nav className="nav">
+  return <nav className="nav" aria-label="Основная навигация">
     <a className="brand" href="/"><span className="brandMark">S</span><span>SmetaCheck KG</span></a>
     <div className="navLinks">
-      <a href="/upload">Проверить</a>
-      <a href="/how-it-works">Как работает</a>
+      {!user&&<a href="/demo">Demo</a>}
+      {!user&&<a href="/sample-report">Пример отчёта</a>}
+      {!user&&<a href="/how-it-works">Как работает</a>}
       {user&&<a href="/dashboard">Кабинет</a>}
+      {user&&<a href="/upload">Новая проверка</a>}
       {user&&<a href="/reports">Отчёты</a>}
       {user&&<a href="/compare">Сравнение</a>}
       <a href="/pricing">Тарифы</a>
-      <a href="/faq">FAQ</a>
+      <a href="/support">Связаться</a>
     </div>
     {!ready?<span className="navAction">...</span>:user?<button className="navAction" type="button" onClick={signOut}>Выйти</button>:<a className="navAction" href="/login">Войти</a>}
   </nav>;
