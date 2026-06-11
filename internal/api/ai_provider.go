@@ -6,6 +6,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type AIProviderInput struct {
@@ -46,7 +47,7 @@ func configuredAIProvider(requestedProvider, requestedModel string) (EstimateAIP
 			return nil, fmt.Errorf("OPENAI_API_KEY is not configured")
 		}
 		if model == "" {
-			model = envString("OPENAI_MODEL", "gpt-5.5")
+			model = envString("OPENAI_MODEL", "gpt-4.1-mini")
 		}
 		return &openAIProvider{model: model}, nil
 	case "gemini":
@@ -54,7 +55,7 @@ func configuredAIProvider(requestedProvider, requestedModel string) (EstimateAIP
 			return nil, fmt.Errorf("GEMINI_API_KEY is not configured")
 		}
 		if model == "" {
-			model = envString("GEMINI_MODEL", "gemini-3.5-flash")
+			model = envString("GEMINI_MODEL", "gemini-2.5-flash")
 		}
 		return &geminiAIProvider{model: model}, nil
 	case "anthropic", "claude":
@@ -62,7 +63,7 @@ func configuredAIProvider(requestedProvider, requestedModel string) (EstimateAIP
 			return nil, fmt.Errorf("ANTHROPIC_API_KEY is not configured")
 		}
 		if model == "" {
-			model = envString("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+			model = envString("ANTHROPIC_MODEL", "claude-sonnet-4-5")
 		}
 		return &anthropicAIProvider{model: model}, nil
 	default:
@@ -99,16 +100,44 @@ func (rulesAIProvider) AnalyzeBatch(_ context.Context, inputs []AIProviderInput)
 		Provider:      "rules",
 		Model:         "deterministic-v2",
 		PromptVersion: aiPromptVersion,
-		Files:         make([]AISummaryResponse, 0, len(inputs)),
+		Files:         make([]AIFileAnalysis, 0, len(inputs)),
+		GeneratedAt:   time.Now().UTC(),
 	}
 	for _, input := range inputs {
-		report := buildAISummary(input.Estimate)
-		report.InputMode = "backend_rules"
-		result.Files = append(result.Files, report)
+		result.Files = append(result.Files, rulesFileAnalysis(input))
 	}
 	result.BatchSummary = buildRuleBatchSummary(inputs)
 	result.Recommendations = []string{"Исправьте замечания высокого и среднего риска и повторите проверку."}
 	return result, nil
+}
+
+func rulesFileAnalysis(input AIProviderInput) AIFileAnalysis {
+	summary := buildAISummary(input.Estimate)
+	findings := make([]AIProviderFinding, 0, len(input.Estimate.Findings))
+	for _, finding := range input.Estimate.Findings {
+		findings = append(findings, AIProviderFinding{
+			FileID:          input.Estimate.ID,
+			Category:        backendFindingCategory(finding),
+			Title:           finding.Title,
+			Severity:        normalizeSeverity(finding.Severity),
+			Detail:          finding.Detail,
+			Evidence:        finding.Detail,
+			SuggestedAction: suggestedActionForFinding(finding),
+		})
+	}
+	return AIFileAnalysis{
+		EstimateID:       input.Estimate.ID,
+		FileName:         input.Estimate.FileName,
+		Summary:          summary.ExecutiveBrief,
+		RiskLevel:        summary.RiskLevel,
+		DataQualityScore: summary.DataQualityScore,
+		ExtractedTotal:   input.Estimate.TotalAmount,
+		RowsAnalyzed:     input.Estimate.ItemsCount,
+		Findings:         findings,
+		Recommendations: summary.PriorityActions,
+		InputMode:        "backend_rules",
+		Warning:          summary.Warning,
+	}
 }
 
 func buildRuleBatchSummary(inputs []AIProviderInput) string {
@@ -122,4 +151,48 @@ func buildRuleBatchSummary(inputs []AIProviderInput) string {
 		rows += input.Estimate.ItemsCount
 	}
 	return fmt.Sprintf("Проверено файлов: %d, распознано строк: %d, общая сумма по backend-расчётам: %.2f сом.", len(inputs), rows, total)
+}
+
+func normalizeSeverity(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "high", "высокий":
+		return "High"
+	case "medium", "средний":
+		return "Medium"
+	case "low", "низкий":
+		return "Low"
+	default:
+		return "Info"
+	}
+}
+
+func backendFindingCategory(finding Finding) string {
+	text := strings.ToLower(finding.Title + " " + finding.Detail)
+	switch {
+	case strings.Contains(text, "дубл"):
+		return "duplicate"
+	case strings.Contains(text, "сумм") || strings.Contains(text, "цена") || strings.Contains(text, "колич"):
+		return "arithmetic"
+	case strings.Contains(text, "колон") || strings.Contains(text, "пуст") || strings.Contains(text, "не найд"):
+		return "data_quality"
+	case strings.Contains(text, "крупн"):
+		return "cost_anomaly"
+	default:
+		return "other"
+	}
+}
+
+func suggestedActionForFinding(finding Finding) string {
+	switch backendFindingCategory(finding) {
+	case "duplicate":
+		return "Подтвердить, являются ли строки дублями, и удалить повтор при необходимости."
+	case "arithmetic":
+		return "Сверить количество, цену и итоговую сумму с первичными документами."
+	case "data_quality":
+		return "Исправить структуру или заполнить отсутствующие данные."
+	case "cost_anomaly":
+		return "Запросить расчёт и подтверждающие документы по стоимости."
+	default:
+		return "Проверить замечание ответственным специалистом."
+	}
 }
