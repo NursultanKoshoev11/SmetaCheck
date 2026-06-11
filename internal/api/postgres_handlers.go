@@ -1,0 +1,190 @@
+package api
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+)
+
+func requireAuthenticatedUser(w http.ResponseWriter, r *http.Request) (RequestUser, bool) {
+	user, ok := currentRequestUser(r)
+	if !ok {
+		estimateWriteError(w, http.StatusUnauthorized, "authentication required")
+		return RequestUser{}, false
+	}
+	return user, true
+}
+
+func EstimateUploadPostgres(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireAuthenticatedUser(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseMultipartForm(envInt64("MAX_UPLOAD_MB", 25) * 1024 * 1024); err != nil {
+		estimateWriteError(w, http.StatusBadRequest, "invalid upload form")
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		estimateWriteError(w, http.StatusBadRequest, "file field is required")
+		return
+	}
+	defer file.Close()
+
+	id := newEstimateID()
+	fileName := sanitizeFileName(header.Filename)
+	if fileName == "" {
+		fileName = "estimate-file"
+	}
+
+	uploadDir := estimateUploadDir()
+	reportDir := estimateReportDir()
+	if err := os.MkdirAll(uploadDir, 0o750); err != nil {
+		estimateWriteError(w, http.StatusInternalServerError, "cannot create upload directory")
+		return
+	}
+	if err := os.MkdirAll(reportDir, 0o750); err != nil {
+		estimateWriteError(w, http.StatusInternalServerError, "cannot create report directory")
+		return
+	}
+
+	storedPath := filepath.Join(uploadDir, id+"_"+fileName)
+	storedFile, err := os.OpenFile(storedPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
+	if err != nil {
+		estimateWriteError(w, http.StatusInternalServerError, "cannot store uploaded file")
+		return
+	}
+	written, copyErr := io.Copy(storedFile, file)
+	closeErr := storedFile.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(storedPath)
+		estimateWriteError(w, http.StatusInternalServerError, "cannot save uploaded file")
+		return
+	}
+
+	items, findings := analyzeEstimateFile(storedPath, fileName, written)
+	estimate := Estimate{
+		ID: id, FileName: fileName, Status: estimateStatus(findings),
+		Score: scoreFromFindings(findings), FileSize: written,
+		UploadedAt: time.Now().UTC(), ItemsCount: len(items),
+		TotalAmount: sumItemsTotal(items), Findings: findings, Items: items,
+		FilePath: storedPath, ReportPath: filepath.Join(reportDir, id+"_report.txt"),
+	}
+	if err := writeEstimateReport(estimate); err != nil {
+		_ = os.Remove(storedPath)
+		estimateWriteError(w, http.StatusInternalServerError, "cannot create report")
+		return
+	}
+	if err := pgSaveEstimate(r.Context(), user.ID, estimate); err != nil {
+		_ = os.Remove(storedPath)
+		_ = os.Remove(estimate.ReportPath)
+		estimateWriteError(w, http.StatusInternalServerError, "cannot save estimate to postgresql")
+		return
+	}
+	estimateWriteJSON(w, http.StatusCreated, estimate)
+}
+
+func EstimateListPostgres(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireAuthenticatedUser(w, r)
+	if !ok {
+		return
+	}
+	estimates, err := pgLoadEstimates(r.Context(), user.ID)
+	if err != nil {
+		estimateWriteError(w, http.StatusInternalServerError, "cannot load estimates from postgresql")
+		return
+	}
+	estimateWriteJSON(w, http.StatusOK, map[string]any{"estimates": estimates})
+}
+
+func EstimateDetailRouterPostgres(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireAuthenticatedUser(w, r)
+	if !ok {
+		return
+	}
+	path := strings.TrimPrefix(r.URL.Path, "/v1/estimates/")
+	parts := strings.Split(strings.Trim(path, "/"), "/")
+	if len(parts) == 0 || parts[0] == "" {
+		estimateWriteError(w, http.StatusNotFound, "estimate not found")
+		return
+	}
+	id := parts[0]
+	estimate, found, err := pgFindEstimate(r.Context(), user.ID, id)
+	if err != nil {
+		estimateWriteError(w, http.StatusInternalServerError, "cannot load estimate from postgresql")
+		return
+	}
+	if !found {
+		estimateWriteError(w, http.StatusNotFound, "estimate not found")
+		return
+	}
+	if len(parts) == 2 && parts[1] == "report" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", estimate.ID+"_report.txt"))
+		http.ServeFile(w, r, estimate.ReportPath)
+		return
+	}
+	if len(parts) == 1 {
+		estimateWriteJSON(w, http.StatusOK, estimate)
+		return
+	}
+	estimateWriteError(w, http.StatusNotFound, "endpoint not found")
+}
+
+func EstimateAISummaryPostgres(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireAuthenticatedUser(w, r)
+	if !ok {
+		return
+	}
+	id := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/ai/estimate-summary/"), "/")
+	if id == "" {
+		estimateWriteError(w, http.StatusBadRequest, "estimate id is required")
+		return
+	}
+	estimate, found, err := pgFindEstimate(r.Context(), user.ID, id)
+	if err != nil {
+		estimateWriteError(w, http.StatusInternalServerError, "cannot load estimate from postgresql")
+		return
+	}
+	if !found {
+		estimateWriteError(w, http.StatusNotFound, "estimate not found")
+		return
+	}
+	estimateWriteJSON(w, http.StatusOK, buildAISummary(estimate))
+}
+
+func EstimateComparePostgres(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireAuthenticatedUser(w, r)
+	if !ok {
+		return
+	}
+	if err := r.ParseMultipartForm(envInt64("MAX_UPLOAD_MB", 25) * 1024 * 1024 * 2); err != nil {
+		estimateWriteError(w, http.StatusBadRequest, "invalid compare form")
+		return
+	}
+	basePath, baseName, baseSize, err := saveCompareFile(r, "base")
+	if err != nil {
+		estimateWriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	newPath, newName, newSize, err := saveCompareFile(r, "new")
+	if err != nil {
+		estimateWriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	baseItems, baseFindings := analyzeEstimateFile(basePath, baseName, baseSize)
+	newItems, newFindings := analyzeEstimateFile(newPath, newName, newSize)
+	result := compareEstimateItems(baseName, newName, baseItems, newItems)
+	result.Findings = append(result.Findings, baseFindings...)
+	result.Findings = append(result.Findings, newFindings...)
+	if err := pgSaveCompareResult(r.Context(), user.ID, result); err != nil {
+		estimateWriteError(w, http.StatusInternalServerError, "cannot save comparison to postgresql")
+		return
+	}
+	estimateWriteJSON(w, http.StatusOK, result)
+}
