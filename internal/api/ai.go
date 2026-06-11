@@ -2,48 +2,23 @@ package api
 
 import (
 	"fmt"
-	"net/http"
 	"strings"
 )
 
 type AISummaryResponse struct {
-	EstimateID        string   `json:"estimate_id"`
-	ExecutiveBrief    string   `json:"executive_brief"`
-	RiskLevel         string   `json:"risk_level"`
-	DataQualityScore  int      `json:"data_quality_score"`
-	KeyRisks          []string `json:"key_risks"`
-	PriorityActions   []string `json:"priority_actions"`
-	CostFlags         []string `json:"cost_flags"`
-	Questions         []string `json:"questions"`
-	Recommendation    string   `json:"recommendation"`
-}
-
-func EstimateAISummary(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
-		estimateWriteError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	id := strings.TrimPrefix(r.URL.Path, "/v1/ai/estimate-summary/")
-	id = strings.Trim(id, "/")
-	if id == "" {
-		estimateWriteError(w, http.StatusBadRequest, "estimate id is required")
-		return
-	}
-	estimate, ok, err := findEstimate(id)
-	if err != nil {
-		estimateWriteError(w, http.StatusInternalServerError, "cannot load estimate")
-		return
-	}
-	if !ok {
-		estimateWriteError(w, http.StatusNotFound, "estimate not found")
-		return
-	}
-	estimateWriteJSON(w, http.StatusOK, buildAISummary(estimate))
+	EstimateID       string   `json:"estimate_id"`
+	ExecutiveBrief   string   `json:"executive_brief"`
+	RiskLevel        string   `json:"risk_level"`
+	DataQualityScore int      `json:"data_quality_score"`
+	KeyRisks         []string `json:"key_risks"`
+	PriorityActions  []string `json:"priority_actions"`
+	CostFlags        []string `json:"cost_flags"`
+	Questions        []string `json:"questions"`
+	Recommendation   string   `json:"recommendation"`
 }
 
 func buildAISummary(estimate Estimate) AISummaryResponse {
-	high, medium, low := 0, 0, 0
+	high, medium := 0, 0
 	keyRisks := make([]string, 0)
 	costFlags := make([]string, 0)
 	for _, finding := range estimate.Findings {
@@ -53,8 +28,6 @@ func buildAISummary(estimate Estimate) AISummaryResponse {
 			high++
 		case "medium":
 			medium++
-		case "low":
-			low++
 		}
 		if finding.Severity == "High" || finding.Severity == "Medium" {
 			keyRisks = append(keyRisks, finding.Title+": "+finding.Detail)
@@ -78,7 +51,11 @@ func buildAISummary(estimate Estimate) AISummaryResponse {
 	if dataQuality > 100 { dataQuality = 100 }
 
 	riskLevel := "Низкий"
-	if high > 0 || estimate.Score < 70 { riskLevel = "Высокий" } else if medium > 1 || estimate.Score < 85 { riskLevel = "Средний" }
+	if high > 0 || estimate.Score < 70 {
+		riskLevel = "Высокий"
+	} else if medium > 1 || estimate.Score < 85 {
+		riskLevel = "Средний"
+	}
 
 	brief := fmt.Sprintf("Смета %q проанализирована: найдено %d строк, сумма по найденным позициям %.2f, оценка %d/100, качество данных %d/100.", estimate.FileName, estimate.ItemsCount, estimate.TotalAmount, estimate.Score, dataQuality)
 	if high > 0 {
