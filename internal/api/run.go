@@ -48,7 +48,7 @@ func Run() {
 	}
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           recoverPanic(requestID(securityHeaders(cors(csrfProtection(maxBodyBytes(mux))))))),
+		Handler:           recoverPanic(requestID(securityHeaders(cors(csrfProtection(maxBodyBytes(mux)))))),
 		ReadHeaderTimeout: envDuration("SERVER_READ_HEADER_TIMEOUT", 5*time.Second),
 		ReadTimeout:       envDuration("SERVER_READ_TIMEOUT", 60*time.Second),
 		WriteTimeout:      envDuration("SERVER_WRITE_TIMEOUT", 60*time.Second),
