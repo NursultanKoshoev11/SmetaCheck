@@ -35,7 +35,7 @@ func Run() {
 		Handler:           recoverPanic(requestID(securityHeaders(cors(maxBodyBytes(mux))))),
 		ReadHeaderTimeout: envDuration("SERVER_READ_HEADER_TIMEOUT", 5*time.Second),
 		ReadTimeout:       envDuration("SERVER_READ_TIMEOUT", 30*time.Second),
-		WriteTimeout:      envDuration("SERVER_WRITE_TIMEOUT", 30*time.Second),
+		WriteTimeout:      envDuration("SERVER_WRITE_TIMEOUT", 60*time.Second),
 		IdleTimeout:       envDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
 		MaxHeaderBytes:    1 << 20,
 	}
