@@ -21,14 +21,20 @@ func csrfProtection(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+
+		_, hasAccessCookie := readAccessCookie(r)
+		_, hasRefreshCookie := readRefreshCookie(r)
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
-		if origin == "" {
-			if referer := strings.TrimSpace(r.Header.Get("Referer")); referer != "" {
-				for candidate := range allowed {
-					if strings.HasPrefix(referer, candidate+"/") || referer == candidate {
-						origin = candidate
-						break
-					}
+		referer := strings.TrimSpace(r.Header.Get("Referer"))
+		if origin == "" && referer == "" && !hasAccessCookie && !hasRefreshCookie {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if origin == "" && referer != "" {
+			for candidate := range allowed {
+				if referer == candidate || strings.HasPrefix(referer, candidate+"/") {
+					origin = candidate
+					break
 				}
 			}
 		}
