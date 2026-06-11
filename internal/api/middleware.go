@@ -47,9 +47,18 @@ func cors(next http.Handler) http.Handler {
 }
 
 func maxBodyBytes(next http.Handler) http.Handler {
-	maxUploadMB := envInt64("MAX_UPLOAD_MB", 25)
-	maxBytes := maxUploadMB * 1024 * 1024
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		perFile := envInt64("MAX_UPLOAD_MB", 25) * 1024 * 1024
+		maxBytes := perFile
+		switch r.URL.Path {
+		case "/v1/analysis-batches":
+			files := envInt64("MAX_BATCH_FILES", 10)
+			if files < 1 { files = 1 }
+			if files > 50 { files = 50 }
+			maxBytes = perFile*files + files*1024*1024
+		case "/v1/estimates/compare":
+			maxBytes = perFile*2 + 2*1024*1024
+		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 		next.ServeHTTP(w, r)
 	})
@@ -70,9 +79,7 @@ func recoverPanic(next http.Handler) http.Handler {
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
-		if requestID == "" {
-			requestID = newRequestID()
-		}
+		if requestID == "" { requestID = newRequestID() }
 		w.Header().Set("X-Request-ID", requestID)
 		next.ServeHTTP(w, r)
 	})
@@ -93,17 +100,13 @@ func parseAllowedOrigins(value string) map[string]bool {
 	allowed := make(map[string]bool)
 	for _, rawOrigin := range strings.Split(value, ",") {
 		origin := strings.TrimSpace(rawOrigin)
-		if origin != "" {
-			allowed[origin] = true
-		}
+		if origin != "" { allowed[origin] = true }
 	}
 	return allowed
 }
 
 func newRequestID() string {
 	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
-		return "unknown"
-	}
+	if _, err := rand.Read(buf); err != nil { return "unknown" }
 	return hex.EncodeToString(buf)
 }
