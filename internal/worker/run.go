@@ -28,16 +28,42 @@ func Run() {
 			pollInterval = parsed
 		}
 	}
-	log.Printf("smetacheck analysis worker started poll_interval=%s", pollInterval)
+	cleanupInterval := 6 * time.Hour
+	if value := os.Getenv("BATCH_CLEANUP_INTERVAL"); value != "" {
+		if parsed, err := time.ParseDuration(value); err == nil && parsed >= time.Minute {
+			cleanupInterval = parsed
+		}
+	}
+	log.Printf("smetacheck analysis worker started poll_interval=%s cleanup_interval=%s", pollInterval, cleanupInterval)
 
-	ticker := time.NewTicker(pollInterval)
-	defer ticker.Stop()
+	pollTicker := time.NewTicker(pollInterval)
+	defer pollTicker.Stop()
+	cleanupTicker := time.NewTicker(cleanupInterval)
+	defer cleanupTicker.Stop()
+
+	cleanupCtx, cleanupCancel := context.WithTimeout(ctx, 2*time.Minute)
+	if removed, err := api.CleanupExpiredBatchFiles(cleanupCtx); err != nil {
+		log.Printf("batch file cleanup error: %v", err)
+	} else if removed > 0 {
+		log.Printf("batch file cleanup removed=%d", removed)
+	}
+	cleanupCancel()
+
 	for {
 		select {
 		case <-ctx.Done():
 			log.Println("smetacheck analysis worker stopped")
 			return
-		case <-ticker.C:
+		case <-cleanupTicker.C:
+			cleanupCtx, cleanupCancel := context.WithTimeout(ctx, 2*time.Minute)
+			removed, err := api.CleanupExpiredBatchFiles(cleanupCtx)
+			cleanupCancel()
+			if err != nil {
+				log.Printf("batch file cleanup error: %v", err)
+			} else if removed > 0 {
+				log.Printf("batch file cleanup removed=%d", removed)
+			}
+		case <-pollTicker.C:
 			for {
 				claimed, err := api.ProcessNextAnalysisBatchSafe(ctx)
 				if err != nil {
