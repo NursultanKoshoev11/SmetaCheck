@@ -37,7 +37,9 @@ func processClaimedAnalysisBatch(ctx context.Context, ownerID string, batch Anal
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		_ = pgUpdateBatchFile(ctx, file.ID, "processing", file.EstimateID, "")
+		if err := pgUpdateBatchFile(ctx, file.ID, "processing", file.EstimateID, ""); err != nil {
+			return err
+		}
 		estimate, err := ensureBatchEstimate(ctx, ownerID, file)
 		if err != nil {
 			_ = pgUpdateBatchFile(ctx, file.ID, "failed", file.EstimateID, err.Error())
@@ -57,7 +59,8 @@ func processClaimedAnalysisBatch(ctx context.Context, ownerID string, batch Anal
 	if err != nil {
 		return fmt.Errorf("configure AI provider: %w", err)
 	}
-	aiResult, err := provider.AnalyzeBatch(ctx, buildAIProviderInputs(estimates))
+	inputs := buildAIProviderInputs(estimates)
+	aiResult, err := analyzeBatchResilient(ctx, batch.ID, provider, inputs)
 	if err != nil {
 		return fmt.Errorf("AI batch analysis failed: %w", err)
 	}
