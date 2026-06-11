@@ -1,34 +1,31 @@
-import {useEffect, useState} from 'react';
+import {useEffect,useState} from 'react';
+import {currentUser,logout} from '../lib/api';
 
 export default function Nav(){
-  const [signedIn, setSignedIn] = useState(false);
+  const [user,setUser]=useState(null);
+  const [ready,setReady]=useState(false);
 
   useEffect(()=>{
-    setSignedIn(Boolean(window.localStorage.getItem('smetacheck_token')));
-  }, []);
+    currentUser().then(value=>{setUser(value);setReady(true);}).catch(()=>setReady(true));
+  },[]);
 
-  function logout(){
-    window.localStorage.removeItem('smetacheck_token');
-    window.localStorage.removeItem('smetacheck_user_email');
-    window.location.href = '/login';
+  async function signOut(){
+    await logout();
+    setUser(null);
+    window.location.replace('/login');
   }
 
-  return (
-    <nav className="nav">
-      <a className="brand" href="/">
-        <span className="brandMark">S</span>
-        <span>SmetaCheck KG</span>
-      </a>
-      <div className="navLinks">
-        <a href="/upload">Проверить</a>
-        <a href="/how-it-works">Как работает</a>
-        {signedIn && <a href="/dashboard">Кабинет</a>}
-        {signedIn && <a href="/reports">Отчёты</a>}
-        {signedIn && <a href="/compare">Сравнение</a>}
-        <a href="/pricing">Тарифы</a>
-        <a href="/faq">FAQ</a>
-      </div>
-      {signedIn ? <button className="navAction" type="button" onClick={logout}>Выйти</button> : <a className="navAction" href="/login">Войти</a>}
-    </nav>
-  )
+  return <nav className="nav">
+    <a className="brand" href="/"><span className="brandMark">S</span><span>SmetaCheck KG</span></a>
+    <div className="navLinks">
+      <a href="/upload">Проверить</a>
+      <a href="/how-it-works">Как работает</a>
+      {user&&<a href="/dashboard">Кабинет</a>}
+      {user&&<a href="/reports">Отчёты</a>}
+      {user&&<a href="/compare">Сравнение</a>}
+      <a href="/pricing">Тарифы</a>
+      <a href="/faq">FAQ</a>
+    </div>
+    {!ready?<span className="navAction">...</span>:user?<button className="navAction" type="button" onClick={signOut}>Выйти</button>:<a className="navAction" href="/login">Войти</a>}
+  </nav>;
 }
