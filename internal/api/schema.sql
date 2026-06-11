@@ -88,6 +88,19 @@ CREATE TABLE IF NOT EXISTS compare_results (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS ai_reports (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    estimate_id TEXT NOT NULL REFERENCES estimates(id) ON DELETE CASCADE,
+    input_hash TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    prompt_version TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (owner_id, estimate_id, input_hash, provider, model, prompt_version)
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -108,5 +121,8 @@ CREATE INDEX IF NOT EXISTS idx_findings_estimate_id ON findings(estimate_id);
 CREATE INDEX IF NOT EXISTS idx_findings_severity ON findings(severity);
 CREATE INDEX IF NOT EXISTS idx_compare_results_owner_id ON compare_results(owner_id);
 CREATE INDEX IF NOT EXISTS idx_compare_results_created_at ON compare_results(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_reports_estimate_id ON ai_reports(estimate_id);
+CREATE INDEX IF NOT EXISTS idx_ai_reports_owner_id ON ai_reports(owner_id);
+CREATE INDEX IF NOT EXISTS idx_ai_reports_created_at ON ai_reports(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
