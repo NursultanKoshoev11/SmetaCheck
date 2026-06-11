@@ -16,6 +16,9 @@ import (
 //go:embed schema.sql
 var embeddedSchema string
 
+//go:embed oauth_schema.sql
+var embeddedOAuthSchema string
+
 var (
 	dbPool *pgxpool.Pool
 	dbOnce sync.Once
@@ -67,10 +70,13 @@ func migrateDatabase(ctx context.Context) error {
 	if err := prepareLegacySchema(ctx, pool); err != nil {
 		return err
 	}
-	if strings.TrimSpace(embeddedSchema) == "" {
-		return fmt.Errorf("embedded schema is empty")
+	if strings.TrimSpace(embeddedSchema) == "" || strings.TrimSpace(embeddedOAuthSchema) == "" {
+		return fmt.Errorf("embedded database schema is incomplete")
 	}
-	_, err = pool.Exec(ctx, embeddedSchema)
+	if _, err := pool.Exec(ctx, embeddedSchema); err != nil {
+		return err
+	}
+	_, err = pool.Exec(ctx, embeddedOAuthSchema)
 	return err
 }
 
