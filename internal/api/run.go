@@ -17,6 +17,7 @@ func Run() {
 	mux.HandleFunc("/health", Health)
 	mux.HandleFunc("/ready", Ready)
 
+	mux.HandleFunc("/v1/auth/providers", requireMethod(http.MethodGet, AuthProviders))
 	mux.HandleFunc("/v1/auth/register", requireMethod(http.MethodPost, AuthRegisterEmail))
 	mux.HandleFunc("/v1/auth/login", requireMethod(http.MethodPost, AuthLoginEmail))
 	mux.HandleFunc("/v1/auth/me", requireMethod(http.MethodGet, AuthMe))
