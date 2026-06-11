@@ -27,6 +27,8 @@ func allowedModelsForProvider(provider string) map[string]struct{} {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	var key, fallback string
 	switch provider {
+	case "rules":
+		return map[string]struct{}{"deterministic-v2": struct{}{}}
 	case "openai":
 		key = "AI_ALLOWED_OPENAI_MODELS"
 		fallback = envString("OPENAI_MODEL", "gpt-4.1-mini")
