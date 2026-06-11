@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/xuri/excelize/v2"
 )
@@ -62,17 +63,25 @@ func analyzeEstimateFile(path string, fileName string, size int64) ([]EstimateIt
 	}
 
 	lowerName := strings.ToLower(fileName)
+	if strings.HasSuffix(lowerName, ".xlsx") || strings.HasSuffix(lowerName, ".xlsm") {
+		items, excelFindings, err := analyzeExcelWorkbook(path)
+		findings = append(findings, excelFindings...)
+		if err != nil {
+			return nil, append(findings, Finding{Title: "Ошибка чтения Excel", Severity: "High", Detail: err.Error()})
+		}
+		findings = append(findings, validateItems(items)...)
+		return finalizeAnalyzedItems(items, findings)
+	}
+
 	var rows [][]string
 	var err error
 	switch {
-	case strings.HasSuffix(lowerName, ".xlsx"), strings.HasSuffix(lowerName, ".xlsm"):
-		rows, err = readExcelRows(path)
 	case strings.HasSuffix(lowerName, ".csv"):
 		rows, err = readCSVRows(path)
 	case strings.HasSuffix(lowerName, ".pdf"):
-		return nil, append(findings, Finding{Title: "PDF принят", Severity: "Medium", Detail: "PDF сохранён. Для точной автоматической проверки загрузите Excel или CSV версию сметы."})
+		return nil, append(findings, Finding{Title: "PDF передан AI", Severity: "Info", Detail: "Backend не извлекает таблицу из PDF; исходный документ анализируется выбранной AI-моделью."})
 	default:
-		return nil, append(findings, Finding{Title: "Неподдерживаемый формат", Severity: "High", Detail: "Для production-проверки используйте XLSX, XLSM или CSV файл."})
+		return nil, append(findings, Finding{Title: "Неподдерживаемый формат", Severity: "High", Detail: "Используйте XLSX, XLSM, CSV или PDF."})
 	}
 	if err != nil {
 		return nil, append(findings, Finding{Title: "Ошибка чтения файла", Severity: "High", Detail: err.Error()})
@@ -82,44 +91,94 @@ func analyzeEstimateFile(path string, fileName string, size int64) ([]EstimateIt
 	}
 
 	headerRow, cols := detectColumns(rows)
-	if cols.Name < 0 || cols.Quantity < 0 || cols.UnitPrice < 0 || cols.Total < 0 {
-		findings = append(findings, Finding{Title: "Не все колонки найдены", Severity: "High", Detail: "Нужны колонки: наименование, количество, цена, сумма. Проверьте заголовки файла."})
+	if !requiredColumnsFound(cols) {
+		findings = append(findings, Finding{Title: "Колонки не распознаны", Severity: "High", Detail: "Не удалось надёжно определить наименование, количество, цену и сумму. Автоматическое сопоставление первых колонок отключено."})
+		return nil, findings
 	}
-
 	items := extractItems(rows, headerRow+1, cols)
 	findings = append(findings, validateItems(items)...)
+	return finalizeAnalyzedItems(items, findings)
+}
+
+func analyzeExcelWorkbook(path string) ([]EstimateItem, []Finding, error) {
+	file, err := excelize.OpenFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer file.Close()
+
+	sheets := file.GetSheetList()
+	if len(sheets) == 0 {
+		return nil, nil, fmt.Errorf("в Excel файле нет листов")
+	}
+	maxSheets := int(envInt64("MAX_EXCEL_SHEETS", 50))
+	if maxSheets < 1 {
+		maxSheets = 1
+	}
+	if maxSheets > 200 {
+		maxSheets = 200
+	}
+	if len(sheets) > maxSheets {
+		return nil, nil, fmt.Errorf("в книге %d листов; разрешено не более %d", len(sheets), maxSheets)
+	}
+	maxRows := int(envInt64("MAX_EXCEL_ROWS_PER_SHEET", 100000))
+	if maxRows < 100 {
+		maxRows = 100
+	}
+	if maxRows > 500000 {
+		maxRows = 500000
+	}
+
+	allItems := make([]EstimateItem, 0)
+	findings := make([]Finding, 0)
+	rowOffset := 0
+	parsedSheets := 0
+	for _, sheet := range sheets {
+		rows, readErr := file.GetRows(sheet)
+		if readErr != nil {
+			findings = append(findings, Finding{Title: "Лист не прочитан", Severity: "High", Detail: fmt.Sprintf("Лист %q: %v", sheet, readErr)})
+			continue
+		}
+		if len(rows) == 0 {
+			continue
+		}
+		if len(rows) > maxRows {
+			findings = append(findings, Finding{Title: "Лист слишком большой", Severity: "High", Detail: fmt.Sprintf("Лист %q содержит %d строк; лимит %d.", sheet, len(rows), maxRows)})
+			rows = rows[:maxRows]
+		}
+		headerRow, cols := detectColumns(rows)
+		if !requiredColumnsFound(cols) {
+			findings = append(findings, Finding{Title: "Лист пропущен", Severity: "Medium", Detail: fmt.Sprintf("Лист %q не содержит надёжно распознанной таблицы сметы.", sheet)})
+			rowOffset += len(rows) + 1
+			continue
+		}
+		items := extractItems(rows, headerRow+1, cols)
+		for index := range items {
+			originalRow := items[index].Row
+			items[index].Row = rowOffset + originalRow
+			items[index].Name = fmt.Sprintf("Лист %s · %s", sheet, items[index].Name)
+		}
+		if len(items) > 0 {
+			parsedSheets++
+			allItems = append(allItems, items...)
+			findings = append(findings, Finding{Title: "Лист прочитан", Severity: "Info", Detail: fmt.Sprintf("Лист %q: найдено %d позиций.", sheet, len(items))})
+		}
+		rowOffset += len(rows) + 1
+	}
+	if parsedSheets == 0 {
+		return nil, findings, fmt.Errorf("ни на одном листе не найдена таблица сметы")
+	}
+	findings = append(findings, Finding{Title: "Excel обработан полностью", Severity: "Info", Detail: fmt.Sprintf("Проанализировано листов с таблицами: %d из %d.", parsedSheets, len(sheets))})
+	return allItems, findings, nil
+}
+
+func finalizeAnalyzedItems(items []EstimateItem, findings []Finding) ([]EstimateItem, []Finding) {
 	if len(items) == 0 {
 		findings = append(findings, Finding{Title: "Позиции не найдены", Severity: "High", Detail: "Система не смогла выделить строки сметы. Проверьте структуру таблицы."})
 	} else {
 		findings = append(findings, Finding{Title: "Позиции прочитаны", Severity: "Info", Detail: fmt.Sprintf("Найдено строк сметы: %d. Общая сумма по найденным строкам: %.2f.", len(items), sumItemsTotal(items))})
 	}
 	return items, findings
-}
-
-func readExcelRows(path string) ([][]string, error) {
-	file, err := excelize.OpenFile(path)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	sheets := file.GetSheetList()
-	if len(sheets) == 0 {
-		return nil, fmt.Errorf("в Excel файле нет листов")
-	}
-	var best [][]string
-	for _, sheet := range sheets {
-		rows, err := file.GetRows(sheet)
-		if err != nil {
-			continue
-		}
-		if len(rows) > len(best) {
-			best = rows
-		}
-	}
-	if len(best) == 0 {
-		return nil, fmt.Errorf("не удалось прочитать строки Excel")
-	}
-	return best, nil
 }
 
 func readCSVRows(path string) ([][]string, error) {
@@ -131,7 +190,18 @@ func readCSVRows(path string) ([][]string, error) {
 	reader := csv.NewReader(file)
 	reader.FieldsPerRecord = -1
 	reader.TrimLeadingSpace = true
-	return reader.ReadAll()
+	rows, err := reader.ReadAll()
+	if err == nil && len(rows) > 0 && len(rows[0]) == 1 && strings.Contains(rows[0][0], ";") {
+		if _, seekErr := file.Seek(0, 0); seekErr != nil {
+			return nil, seekErr
+		}
+		reader = csv.NewReader(file)
+		reader.Comma = ';'
+		reader.FieldsPerRecord = -1
+		reader.TrimLeadingSpace = true
+		return reader.ReadAll()
+	}
+	return rows, err
 }
 
 func detectColumns(rows [][]string) (int, columnMap) {
@@ -139,8 +209,8 @@ func detectColumns(rows [][]string) (int, columnMap) {
 	bestScore := -1
 	best := columnMap{Name: -1, Unit: -1, Quantity: -1, UnitPrice: -1, Total: -1}
 	limit := len(rows)
-	if limit > 25 {
-		limit = 25
+	if limit > 50 {
+		limit = 50
 	}
 	for i := 0; i < limit; i++ {
 		candidate := columnMap{Name: -1, Unit: -1, Quantity: -1, UnitPrice: -1, Total: -1}
@@ -171,11 +241,11 @@ func detectColumns(rows [][]string) (int, columnMap) {
 			best = candidate
 		}
 	}
-	if bestScore < 3 {
-		best = columnMap{Name: 0, Unit: 1, Quantity: 2, UnitPrice: 3, Total: 4}
-		bestRow = 0
-	}
 	return bestRow, best
+}
+
+func requiredColumnsFound(cols columnMap) bool {
+	return cols.Name >= 0 && cols.Quantity >= 0 && cols.UnitPrice >= 0 && cols.Total >= 0
 }
 
 func extractItems(rows [][]string, start int, cols columnMap) []EstimateItem {
@@ -220,7 +290,7 @@ func validateItems(items []EstimateItem) []Finding {
 		expected := item.Quantity * item.UnitPrice
 		if item.Quantity > 0 && item.UnitPrice > 0 && item.Total > 0 {
 			diff := math.Abs(expected - item.Total)
-			limit := math.Max(1, math.Abs(item.Total)*0.02)
+			limit := math.Max(0.01, math.Abs(item.Total)*0.0001)
 			if diff > limit {
 				findings = append(findings, Finding{Title: "Сумма строки не сходится", Severity: "High", Detail: fmt.Sprintf("Строка %d: количество × цена = %.2f, в смете указано %.2f.", item.Row, expected, item.Total)})
 			}
@@ -306,13 +376,35 @@ func cell(row []string, index int) string {
 
 func parseNumber(value string) float64 {
 	value = strings.TrimSpace(value)
-	value = strings.ReplaceAll(value, " ", "")
-	value = strings.ReplaceAll(value, "\u00a0", "")
-	value = strings.ReplaceAll(value, "сом", "")
-	value = strings.ReplaceAll(value, "KGS", "")
-	value = strings.ReplaceAll(value, "kgs", "")
-	if strings.Count(value, ",") == 1 && strings.Count(value, ".") == 0 { value = strings.ReplaceAll(value, ",", ".") }
-	value = strings.ReplaceAll(value, ",", "")
+	for _, token := range []string{" ", "\u00a0", "сом", "KGS", "kgs"} {
+		value = strings.ReplaceAll(value, token, "")
+	}
+	if value == "" {
+		return 0
+	}
+	comma := strings.LastIndex(value, ",")
+	dot := strings.LastIndex(value, ".")
+	switch {
+	case comma >= 0 && dot >= 0:
+		if comma > dot {
+			value = strings.ReplaceAll(value, ".", "")
+			value = strings.ReplaceAll(value, ",", ".")
+		} else {
+			value = strings.ReplaceAll(value, ",", "")
+		}
+	case comma >= 0:
+		digitsAfter := len(value) - comma - 1
+		if digitsAfter == 1 || digitsAfter == 2 {
+			value = strings.ReplaceAll(value, ",", ".")
+		} else {
+			value = strings.ReplaceAll(value, ",", "")
+		}
+	case dot >= 0:
+		digitsAfter := len(value) - dot - 1
+		if digitsAfter == 3 && strings.Count(value, ".") == 1 {
+			value = strings.ReplaceAll(value, ".", "")
+		}
+	}
 	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil { return 0 }
 	return parsed
@@ -325,6 +417,9 @@ func isLikelySummary(name string) bool {
 
 func normalizeDuplicateKey(name, unit string) string {
 	name = strings.ToLower(strings.TrimSpace(name))
+	if separator := strings.Index(name, " · "); separator >= 0 {
+		name = name[separator+len(" · "):]
+	}
 	unit = strings.ToLower(strings.TrimSpace(unit))
 	if len(name) < 4 { return "" }
 	for _, old := range []string{",", ".", ";", ":", "-", "_", "  "} { name = strings.ReplaceAll(name, old, " ") }
@@ -345,7 +440,9 @@ func sanitizeFileName(name string) string {
 	name = filepath.Base(strings.TrimSpace(name))
 	name = strings.ReplaceAll(name, " ", "_")
 	name = strings.Map(func(r rune) rune {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' { return r }
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '_' || r == '-' {
+			return r
+		}
 		return -1
 	}, name)
 	return name
