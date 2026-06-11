@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	_ "embed"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -10,6 +12,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+//go:embed schema.sql
+var embeddedSchema string
 
 var (
 	dbPool *pgxpool.Pool
@@ -25,6 +30,7 @@ func getDB(ctx context.Context) (*pgxpool.Pool, error) {
 	dbOnce.Do(func() {
 		dsn := strings.TrimSpace(os.Getenv("DATABASE_URL"))
 		if dsn == "" {
+			dbErr = fmt.Errorf("DATABASE_URL is required")
 			return
 		}
 		config, err := pgxpool.ParseConfig(dsn)
@@ -52,26 +58,22 @@ func getDB(ctx context.Context) (*pgxpool.Pool, error) {
 }
 
 func migrateDatabase(ctx context.Context) error {
-	if !databaseEnabled() {
-		return nil
-	}
 	pool, err := getDB(ctx)
 	if err != nil {
 		return err
 	}
 	if pool == nil {
-		return nil
+		return fmt.Errorf("postgresql pool is unavailable")
 	}
-	data, err := os.ReadFile("db/migrations/001_initial_schema.sql")
-	if err != nil {
-		return err
+	if strings.TrimSpace(embeddedSchema) == "" {
+		return fmt.Errorf("embedded schema is empty")
 	}
-	_, err = pool.Exec(ctx, string(data))
+	_, err = pool.Exec(ctx, embeddedSchema)
 	return err
 }
 
 func initDatabaseForRun() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	if err := migrateDatabase(ctx); err != nil {
 		log.Fatalf("database migration failed: %v", err)
