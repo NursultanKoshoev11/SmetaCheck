@@ -68,25 +68,40 @@ func saveCompareFile(r *http.Request, field string) (string, string, int64, erro
 		return "", "", 0, fmt.Errorf("file field %q is required", field)
 	}
 	defer file.Close()
+	maxBytes := envInt64("MAX_UPLOAD_MB", 25) * 1024 * 1024
+	if header.Size <= 0 {
+		return "", "", 0, fmt.Errorf("%s file is empty", field)
+	}
+	if header.Size > maxBytes {
+		return "", "", 0, fmt.Errorf("%s file exceeds maximum size", field)
+	}
 
 	fileName := sanitizeFileName(header.Filename)
 	if fileName == "" {
 		fileName = field + "-estimate"
 	}
 	extension := strings.ToLower(filepath.Ext(fileName))
-	if len(extension) > 16 {
-		extension = ""
+	if extension != ".xlsx" && extension != ".xlsm" && extension != ".csv" && extension != ".pdf" {
+		return "", "", 0, fmt.Errorf("unsupported %s file format", field)
 	}
 	temporary, err := os.CreateTemp("", "smetacheck-compare-*"+extension)
 	if err != nil {
 		return "", "", 0, fmt.Errorf("cannot create temporary %s file", field)
 	}
 	path := temporary.Name()
-	written, copyErr := io.Copy(temporary, file)
+	written, copyErr := io.Copy(temporary, io.LimitReader(file, maxBytes+1))
 	closeErr := temporary.Close()
 	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(path)
 		return "", "", 0, fmt.Errorf("cannot write %s file", field)
+	}
+	if written > maxBytes {
+		_ = os.Remove(path)
+		return "", "", 0, fmt.Errorf("%s file exceeds maximum size", field)
+	}
+	if _, err := inspectUploadedFile(r.Context(), path, fileName); err != nil {
+		_ = os.Remove(path)
+		return "", "", 0, fmt.Errorf("%s file: %w", field, err)
 	}
 	return path, fileName, written, nil
 }
@@ -108,57 +123,34 @@ func compareEstimateItems(baseName, newName string, baseItems, newItems []Estima
 	newMap := map[string]EstimateItem{}
 	for _, item := range baseItems {
 		key := compareKey(item)
-		if key != "" {
-			baseMap[key] = item
-		}
+		if key != "" { baseMap[key] = item }
 	}
 	for _, item := range newItems {
 		key := compareKey(item)
-		if key != "" {
-			newMap[key] = item
-		}
+		if key != "" { newMap[key] = item }
 	}
 
 	response := CompareResponse{ID: newEstimateID(), CreatedAt: time.Now().UTC(), BaseFile: baseName, NewFile: newName, BaseTotal: sumItemsTotal(baseItems), NewTotal: sumItemsTotal(newItems)}
 	response.DeltaTotal = response.NewTotal - response.BaseTotal
-
 	for key, newItem := range newMap {
 		baseItem, ok := baseMap[key]
-		if !ok {
-			response.Added = append(response.Added, newItem)
-			continue
-		}
+		if !ok { response.Added = append(response.Added, newItem); continue }
 		delta := newItem.Total - baseItem.Total
-		if delta > 1 || delta < -1 {
-			response.Changed = append(response.Changed, ChangedItem{Name: newItem.Name, BaseRow: baseItem.Row, NewRow: newItem.Row, BaseTotal: baseItem.Total, NewTotal: newItem.Total, DeltaTotal: delta})
-		}
+		if delta > 1 || delta < -1 { response.Changed = append(response.Changed, ChangedItem{Name: newItem.Name, BaseRow: baseItem.Row, NewRow: newItem.Row, BaseTotal: baseItem.Total, NewTotal: newItem.Total, DeltaTotal: delta}) }
 	}
 	for key, baseItem := range baseMap {
-		if _, ok := newMap[key]; !ok {
-			response.Removed = append(response.Removed, baseItem)
-		}
+		if _, ok := newMap[key]; !ok { response.Removed = append(response.Removed, baseItem) }
 	}
-
-	if len(response.Added) > 0 {
-		response.Findings = append(response.Findings, Finding{Title: "Добавлены позиции", Severity: "Medium", Detail: fmt.Sprintf("В новой смете добавлено позиций: %d.", len(response.Added))})
-	}
-	if len(response.Removed) > 0 {
-		response.Findings = append(response.Findings, Finding{Title: "Удалены позиции", Severity: "Medium", Detail: fmt.Sprintf("Из новой сметы удалено позиций: %d.", len(response.Removed))})
-	}
-	if len(response.Changed) > 0 {
-		response.Findings = append(response.Findings, Finding{Title: "Изменены суммы", Severity: "High", Detail: fmt.Sprintf("Позиции с изменённой суммой: %d.", len(response.Changed))})
-	}
-	if response.DeltaTotal != 0 {
-		response.Findings = append(response.Findings, Finding{Title: "Изменился общий бюджет", Severity: "High", Detail: fmt.Sprintf("Разница между версиями: %.2f.", response.DeltaTotal)})
-	}
+	if len(response.Added) > 0 { response.Findings = append(response.Findings, Finding{Title: "Добавлены позиции", Severity: "Medium", Detail: fmt.Sprintf("В новой смете добавлено позиций: %d.", len(response.Added))}) }
+	if len(response.Removed) > 0 { response.Findings = append(response.Findings, Finding{Title: "Удалены позиции", Severity: "Medium", Detail: fmt.Sprintf("Из новой сметы удалено позиций: %d.", len(response.Removed))}) }
+	if len(response.Changed) > 0 { response.Findings = append(response.Findings, Finding{Title: "Изменены суммы", Severity: "High", Detail: fmt.Sprintf("Позиции с изменённой суммой: %d.", len(response.Changed))}) }
+	if response.DeltaTotal != 0 { response.Findings = append(response.Findings, Finding{Title: "Изменился общий бюджет", Severity: "High", Detail: fmt.Sprintf("Разница между версиями: %.2f.", response.DeltaTotal)}) }
 	return response
 }
 
 func compareKey(item EstimateItem) string {
 	name := strings.ToLower(strings.TrimSpace(item.Name))
 	unit := strings.ToLower(strings.TrimSpace(item.Unit))
-	if len(name) < 4 {
-		return ""
-	}
+	if len(name) < 4 { return "" }
 	return normalizeDuplicateKey(name, unit)
 }
