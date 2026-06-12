@@ -16,6 +16,7 @@ type expiredBatchFile struct {
 	BatchID    string
 	EstimateID string
 	FilePath   string
+	FileSize   int64
 }
 
 func CleanupExpiredBatchFiles(ctx context.Context) (int, error) {
@@ -37,7 +38,7 @@ func CleanupExpiredBatchFiles(ctx context.Context) (int, error) {
 
 	cutoff := time.Now().UTC().Add(-time.Duration(retentionDays) * 24 * time.Hour)
 	rows, err := pool.Query(ctx, `
-		SELECT f.id, b.owner_id, f.batch_id, COALESCE(f.estimate_id, ''), f.file_path
+		SELECT f.id, b.owner_id, f.batch_id, COALESCE(f.estimate_id, ''), f.file_path, f.file_size
 		FROM analysis_batch_files f
 		JOIN analysis_batches b ON b.id = f.batch_id
 		WHERE b.status IN ('completed', 'failed')
@@ -54,7 +55,7 @@ func CleanupExpiredBatchFiles(ctx context.Context) (int, error) {
 	files := make([]expiredBatchFile, 0)
 	for rows.Next() {
 		var file expiredBatchFile
-		if err := rows.Scan(&file.ID, &file.OwnerID, &file.BatchID, &file.EstimateID, &file.FilePath); err != nil {
+		if err := rows.Scan(&file.ID, &file.OwnerID, &file.BatchID, &file.EstimateID, &file.FilePath, &file.FileSize); err != nil {
 			return 0, err
 		}
 		files = append(files, file)
@@ -76,19 +77,26 @@ func CleanupExpiredBatchFiles(ctx context.Context) (int, error) {
 		if err != nil {
 			return removed, err
 		}
-		_, updateErr := tx.Exec(ctx, `
+		result, updateErr := tx.Exec(ctx, `
 			UPDATE analysis_batch_files
 			SET file_path = ''
 			WHERE id = $1 AND file_path = $2
 		`, file.ID, file.FilePath)
-		if updateErr == nil && file.EstimateID != "" {
+		if updateErr == nil && result.RowsAffected() == 1 && file.EstimateID != "" {
 			_, updateErr = tx.Exec(ctx, `
 				UPDATE estimates
 				SET file_path = ''
 				WHERE id = $1 AND file_path = $2
 			`, file.EstimateID, file.FilePath)
 		}
-		if updateErr == nil {
+		if updateErr == nil && result.RowsAffected() == 1 {
+			_, updateErr = tx.Exec(ctx, `
+				UPDATE account_storage_usage
+				SET storage_bytes=GREATEST(storage_bytes-$2,0),updated_at=now()
+				WHERE user_id=$1
+			`, file.OwnerID, file.FileSize)
+		}
+		if updateErr == nil && result.RowsAffected() == 1 {
 			_, updateErr = tx.Exec(ctx, `
 				INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id)
 				VALUES ($1, $2, 'analysis_batch.file_purged', 'analysis_batch', $3)
@@ -101,7 +109,9 @@ func CleanupExpiredBatchFiles(ctx context.Context) (int, error) {
 		if err := tx.Commit(ctx); err != nil {
 			return removed, err
 		}
-		removed++
+		if result.RowsAffected() == 1 {
+			removed++
+		}
 	}
 	return removed, nil
 }
