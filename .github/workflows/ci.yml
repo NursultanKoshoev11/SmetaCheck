@@ -9,10 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend quality and builds
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,9 +43,41 @@ jobs:
           CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-worker ./cmd/worker
           CGO_ENABLED=0 go build -trimpath -o /tmp/smetacheck-bot ./cmd/bot
 
+  database-integration:
+    name: PostgreSQL schema integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: smetacheck_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d smetacheck_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: true
+      - name: Validate production schema on clean PostgreSQL
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/smetacheck_test?sslmode=disable
+        run: go test -tags=integration -count=1 -run TestProductionDatabaseSchema ./internal/api
+
   frontend:
     name: Frontend production build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -56,11 +93,14 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Build
+        env:
+          NEXT_PUBLIC_API_BASE: https://api.example.com
         run: npm run build
 
   containers:
     name: Production configuration and images
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,5 +114,5 @@ jobs:
         run: docker build --pull -f Dockerfile.worker -t smetacheck-worker:ci .
       - name: Build bot image
         run: docker build --pull -f Dockerfile.bot -t smetacheck-bot:ci .
-      - name: Build frontend image
-        run: docker build --pull --build-arg NEXT_PUBLIC_API_BASE=https://api.example.com -f Dockerfile.frontend -t smetacheck-frontend:ci .
+      - name: Build production frontend image
+        run: docker build --pull --build-arg NEXT_PUBLIC_API_BASE=https://api.example.com -f Dockerfile.frontend.production -t smetacheck-frontend:ci .
