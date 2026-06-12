@@ -8,6 +8,25 @@ CREATE INDEX IF NOT EXISTS idx_auth_sessions_previous_refresh_hash
     ON auth_sessions(previous_refresh_token_hash)
     WHERE previous_refresh_token_hash IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS auth_refresh_token_history (
+    token_hash TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES auth_sessions(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    rotated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at TIMESTAMPTZ NOT NULL,
+    ip_address TEXT,
+    user_agent TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_refresh_history_session
+    ON auth_refresh_token_history(session_id, rotated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_auth_refresh_history_user
+    ON auth_refresh_token_history(user_id, rotated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_auth_refresh_history_expires
+    ON auth_refresh_token_history(expires_at);
+
 CREATE TABLE IF NOT EXISTS auth_rate_limits (
     key_hash TEXT NOT NULL,
     action TEXT NOT NULL,

@@ -41,6 +41,7 @@ func cleanupAuthRecords(ctx context.Context) error {
 	statements := []string{
 		`DELETE FROM oauth_states WHERE expires_at < now()`,
 		`DELETE FROM auth_tokens WHERE expires_at < now() OR (consumed_at IS NOT NULL AND consumed_at < now() - interval '7 days')`,
+		`DELETE FROM auth_refresh_token_history WHERE expires_at < now()`,
 		`DELETE FROM auth_sessions WHERE expires_at < now() OR (revoked_at IS NOT NULL AND revoked_at < now() - interval '7 days')`,
 		`DELETE FROM auth_rate_limits WHERE updated_at < now() - interval '2 days'`,
 	}
