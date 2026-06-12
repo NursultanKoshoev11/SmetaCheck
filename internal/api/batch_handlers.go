@@ -26,6 +26,7 @@ func AnalysisBatchCreate(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusBadRequest, "invalid multipart batch upload")
 		return
 	}
+	defer cleanupMultipartForm(r)
 
 	headers := r.MultipartForm.File["files"]
 	if len(headers) == 0 {
@@ -38,6 +39,15 @@ func AnalysisBatchCreate(w http.ResponseWriter, r *http.Request) {
 	if len(headers) > maxFiles {
 		estimateWriteError(w, http.StatusBadRequest, fmt.Sprintf("maximum files per batch is %d", maxFiles))
 		return
+	}
+
+	var reservedBytes int64
+	for _, header := range headers {
+		if header.Size <= 0 {
+			estimateWriteError(w, http.StatusBadRequest, fmt.Sprintf("file %q is empty", header.Filename))
+			return
+		}
+		reservedBytes += header.Size
 	}
 
 	rawProvider := strings.TrimSpace(r.FormValue("provider"))
@@ -59,6 +69,30 @@ func AnalysisBatchCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	aiJobs := int64(0)
+	if provider.Name() != "rules" {
+		aiJobs = int64(len(headers))
+	}
+	usage := UsageDelta{
+		UploadFiles:  int64(len(headers)),
+		UploadBytes:  reservedBytes,
+		AIJobs:       aiJobs,
+		BatchJobs:    1,
+		StorageBytes: reservedBytes,
+	}
+	if err := reserveAccountUsage(r.Context(), user.ID, usage); err != nil {
+		if !writeUsageQuotaError(w, err) {
+			estimateWriteError(w, http.StatusServiceUnavailable, "usage accounting is unavailable")
+		}
+		return
+	}
+	usageReserved := true
+	defer func() {
+		if usageReserved {
+			rollbackUsageBestEffort(user.ID, usage)
+		}
+	}()
+
 	batchID := newDatabaseID("bat")
 	batchDir := filepath.Join(estimateUploadDir(), "batches", batchID)
 	if err := os.MkdirAll(batchDir, 0o750); err != nil {
@@ -68,6 +102,7 @@ func AnalysisBatchCreate(w http.ResponseWriter, r *http.Request) {
 
 	paths := make([]string, 0, len(headers))
 	files := make([]AnalysisBatchFile, 0, len(headers))
+	var actualBytes int64
 	for _, header := range headers {
 		file, err := saveBatchUpload(batchID, batchDir, header)
 		if err != nil {
@@ -80,6 +115,19 @@ func AnalysisBatchCreate(w http.ResponseWriter, r *http.Request) {
 		}
 		paths = append(paths, file.FilePath)
 		files = append(files, file)
+		actualBytes += file.FileSize
+	}
+	if actualBytes != reservedBytes {
+		if err := reconcileReservedUploadSize(r.Context(), user.ID, &usage, reservedBytes, actualBytes); err != nil {
+			for _, path := range paths {
+				_ = os.Remove(path)
+			}
+			_ = os.Remove(batchDir)
+			if !writeUsageQuotaError(w, err) {
+				estimateWriteError(w, http.StatusServiceUnavailable, "usage accounting is unavailable")
+			}
+			return
+		}
 	}
 
 	batch := AnalysisBatch{
@@ -98,6 +146,7 @@ func AnalysisBatchCreate(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusInternalServerError, "cannot create analysis batch")
 		return
 	}
+	usageReserved = false
 
 	w.Header().Set("Location", "/v1/analysis-batches/"+batchID)
 	estimateWriteJSON(w, http.StatusAccepted, map[string]any{

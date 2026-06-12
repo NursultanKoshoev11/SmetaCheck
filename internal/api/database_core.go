@@ -15,7 +15,7 @@ import (
 
 const (
 	databaseMigrationLockKey int64 = 0x534d45544143484b
-	currentSchemaVersion     int64 = 2026061201
+	currentSchemaVersion     int64 = 2026061202
 )
 
 //go:embed schema.sql
@@ -26,6 +26,9 @@ var embeddedOAuthSchema string
 
 //go:embed auth_security_schema.sql
 var embeddedAuthSecuritySchema string
+
+//go:embed usage_schema.sql
+var embeddedUsageSchema string
 
 var (
 	dbPool *pgxpool.Pool
@@ -107,10 +110,18 @@ func migrateDatabase(ctx context.Context) error {
 	if err := prepareLegacySchema(ctx, pool); err != nil {
 		return err
 	}
-	if strings.TrimSpace(embeddedSchema) == "" || strings.TrimSpace(embeddedOAuthSchema) == "" || strings.TrimSpace(embeddedAuthSecuritySchema) == "" {
+	if strings.TrimSpace(embeddedSchema) == "" ||
+		strings.TrimSpace(embeddedOAuthSchema) == "" ||
+		strings.TrimSpace(embeddedAuthSecuritySchema) == "" ||
+		strings.TrimSpace(embeddedUsageSchema) == "" {
 		return fmt.Errorf("embedded database schema is incomplete")
 	}
-	for _, migration := range []string{embeddedSchema, embeddedOAuthSchema, embeddedAuthSecuritySchema} {
+	for _, migration := range []string{
+		embeddedSchema,
+		embeddedOAuthSchema,
+		embeddedAuthSecuritySchema,
+		embeddedUsageSchema,
+	} {
 		if _, err := lockConnection.Exec(ctx, migration); err != nil {
 			return fmt.Errorf("apply embedded database migration: %w", err)
 		}
