@@ -36,6 +36,7 @@ func TestProductionDatabaseSchema(t *testing.T) {
 		"users",
 		"auth_identities",
 		"auth_sessions",
+		"auth_refresh_token_history",
 		"auth_tokens",
 		"oauth_states",
 		"auth_rate_limits",
