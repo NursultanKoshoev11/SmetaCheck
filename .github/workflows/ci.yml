@@ -104,10 +104,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Validate shell scripts
+        run: sh -n scripts/*.sh
       - name: Prepare validation environment
         run: cp .env.production.example .env
       - name: Validate production Compose
-        run: docker compose -f docker-compose.production.yml config --quiet
+        run: docker compose -f docker-compose.production.yml config --format json > /tmp/compose.json
+      - name: Verify service secret isolation
+        run: |
+          jq -e '.services.postgres.environment | keys | sort == ["POSTGRES_DB","POSTGRES_PASSWORD","POSTGRES_USER"]' /tmp/compose.json
+          jq -e '.services.caddy.environment | keys | sort == ["ACME_EMAIL","API_DOMAIN","APP_DOMAIN"]' /tmp/compose.json
+          jq -e '(.services.worker.environment | has("SMTP_PASSWORD") | not)' /tmp/compose.json
+          jq -e '(.services.worker.environment | has("JWT_SECRET") | not)' /tmp/compose.json
+          jq -e '(.services.postgres.environment | has("OPENAI_API_KEY") | not)' /tmp/compose.json
+          jq -e '(.services.caddy.environment | has("SMTP_PASSWORD") | not)' /tmp/compose.json
       - name: Build API image
         run: docker build --pull -f Dockerfile.api -t smetacheck-api:ci .
       - name: Build worker image
