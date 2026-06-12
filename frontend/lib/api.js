@@ -1,5 +1,23 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
 
+let refreshPromise = null;
+
+function refreshSession() {
+  if (!refreshPromise) {
+    refreshPromise = fetch(`${API_BASE}/v1/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include'
+    }).finally(() => {
+      refreshPromise = null;
+    });
+  }
+  return refreshPromise;
+}
+
+function delay(milliseconds) {
+  return new Promise(resolve => window.setTimeout(resolve, milliseconds));
+}
+
 export async function apiFetch(path, options = {}, retry = true) {
   const headers = new Headers(options.headers || {});
   const response = await fetch(`${API_BASE}${path}`, {
@@ -9,11 +27,12 @@ export async function apiFetch(path, options = {}, retry = true) {
   });
 
   if (response.status === 401 && retry && path !== '/v1/auth/refresh') {
-    const refreshed = await fetch(`${API_BASE}/v1/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include'
-    });
+    const refreshed = await refreshSession();
     if (refreshed.ok) {
+      return apiFetch(path, options, false);
+    }
+    if (refreshed.status === 409) {
+      await delay(350);
       return apiFetch(path, options, false);
     }
   }
