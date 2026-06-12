@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -37,6 +38,24 @@ func EstimateUploadPostgres(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer file.Close()
+	if header.Size <= 0 {
+		estimateWriteError(w, http.StatusBadRequest, "uploaded file is empty")
+		return
+	}
+
+	usage := UsageDelta{UploadFiles: 1, UploadBytes: header.Size, StorageBytes: header.Size}
+	if err := reserveAccountUsage(r.Context(), user.ID, usage); err != nil {
+		if !writeUsageQuotaError(w, err) {
+			estimateWriteError(w, http.StatusServiceUnavailable, "usage accounting is unavailable")
+		}
+		return
+	}
+	usageReserved := true
+	defer func() {
+		if usageReserved {
+			rollbackUsageBestEffort(user.ID, usage)
+		}
+	}()
 
 	id := newEstimateID()
 	fileName := sanitizeFileName(header.Filename)
@@ -68,6 +87,15 @@ func EstimateUploadPostgres(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusInternalServerError, "cannot save uploaded file")
 		return
 	}
+	if written != header.Size {
+		if err := reconcileReservedUploadSize(r.Context(), user.ID, &usage, header.Size, written); err != nil {
+			_ = os.Remove(storedPath)
+			if !writeUsageQuotaError(w, err) {
+				estimateWriteError(w, http.StatusServiceUnavailable, "usage accounting is unavailable")
+			}
+			return
+		}
+	}
 
 	items, findings := analyzeEstimateFile(storedPath, fileName, written)
 	estimate := Estimate{
@@ -88,7 +116,31 @@ func EstimateUploadPostgres(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusInternalServerError, "cannot save estimate to postgresql")
 		return
 	}
+	usageReserved = false
 	estimateWriteJSON(w, http.StatusCreated, estimate)
+}
+
+func reconcileReservedUploadSize(ctx context.Context, userID string, usage *UsageDelta, reserved, actual int64) error {
+	if actual > reserved {
+		extra := actual - reserved
+		delta := UsageDelta{UploadBytes: extra, StorageBytes: extra}
+		if err := reserveAccountUsage(ctx, userID, delta); err != nil {
+			return err
+		}
+		usage.UploadBytes += extra
+		usage.StorageBytes += extra
+		return nil
+	}
+	if actual < reserved {
+		reduction := reserved - actual
+		delta := UsageDelta{UploadBytes: reduction, StorageBytes: reduction}
+		if err := rollbackAccountUsage(ctx, userID, delta); err != nil {
+			return err
+		}
+		usage.UploadBytes -= reduction
+		usage.StorageBytes -= reduction
+	}
+	return nil
 }
 
 func EstimateListPostgres(w http.ResponseWriter, r *http.Request) {
