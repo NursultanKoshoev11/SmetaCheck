@@ -40,6 +40,7 @@ func Run() {
 	mux.HandleFunc("/v1/auth/telegram", requireMethod(http.MethodGet, authRateLimit("telegram_begin", 20, 15*time.Minute, AuthTelegramBeginSecure)))
 	mux.HandleFunc("/v1/auth/telegram/callback", requireMethod(http.MethodGet, AuthTelegramCallbackSecure))
 
+	mux.HandleFunc("/v1/account/usage", requireMethod(http.MethodGet, AccountUsage))
 	mux.HandleFunc("/v1/ai/providers", requireMethod(http.MethodGet, AIProviders))
 	mux.HandleFunc("/v1/ai/estimate-summary/", requireMethod(http.MethodGet, EstimateAISummaryPostgres))
 	mux.HandleFunc("/v1/analysis-batches", requireMethod(http.MethodPost, AnalysisBatchCreate))
@@ -47,7 +48,7 @@ func Run() {
 	mux.HandleFunc("/v1/estimates", requireMethod(http.MethodGet, EstimateListPostgres))
 	mux.HandleFunc("/v1/estimates/upload", requireMethod(http.MethodPost, EstimateUploadPostgres))
 	mux.HandleFunc("/v1/estimates/compare", requireMethod(http.MethodPost, EstimateComparePostgres))
-	mux.HandleFunc("/v1/estimates/", EstimateRouterPostgres)
+	mux.HandleFunc("/v1/estimates/", EstimateRouterWithUsage)
 
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
