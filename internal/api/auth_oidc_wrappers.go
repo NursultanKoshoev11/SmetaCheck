@@ -8,9 +8,10 @@ import (
 )
 
 type bufferedAuthResponse struct {
-	header http.Header
-	status int
-	body bytes.Buffer
+	header      http.Header
+	status      int
+	wroteHeader bool
+	body        bytes.Buffer
 }
 
 func newBufferedAuthResponse() *bufferedAuthResponse {
@@ -22,10 +23,17 @@ func (response *bufferedAuthResponse) Header() http.Header {
 }
 
 func (response *bufferedAuthResponse) WriteHeader(status int) {
+	if response.wroteHeader {
+		return
+	}
 	response.status = status
+	response.wroteHeader = true
 }
 
 func (response *bufferedAuthResponse) Write(data []byte) (int, error) {
+	if !response.wroteHeader {
+		response.WriteHeader(http.StatusOK)
+	}
 	return response.body.Write(data)
 }
 
@@ -64,7 +72,7 @@ func beginOIDCWithBrowserState(w http.ResponseWriter, r *http.Request, provider 
 func finishOIDCWithBrowserState(w http.ResponseWriter, r *http.Request, provider string, handler http.HandlerFunc) {
 	state := strings.TrimSpace(r.URL.Query().Get("state"))
 	if !validateAndClearOAuthStateCookie(w, r, provider, state) {
-		redirectOAuthError(w, r, "OAuth state does not match this browser session")
+		redirectOAuthFailure(w, r, provider, "invalid_state", nil)
 		return
 	}
 	handler(w, r)
@@ -77,5 +85,7 @@ func copyBufferedAuthResponse(w http.ResponseWriter, buffered *bufferedAuthRespo
 		}
 	}
 	w.WriteHeader(buffered.status)
-	_, _ = w.Write(buffered.body.Bytes())
+	if buffered.body.Len() > 0 {
+		_, _ = w.Write(buffered.body.Bytes())
+	}
 }

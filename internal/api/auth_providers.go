@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -26,22 +27,51 @@ func AuthProviders(w http.ResponseWriter, r *http.Request) {
 }
 
 func smtpConfigured() bool {
-	return strings.TrimSpace(os.Getenv("SMTP_HOST")) != "" &&
-		strings.TrimSpace(os.Getenv("SMTP_PORT")) != "" &&
-		strings.TrimSpace(os.Getenv("SMTP_FROM")) != ""
+	if strings.TrimSpace(os.Getenv("SMTP_HOST")) == "" ||
+		strings.TrimSpace(os.Getenv("SMTP_PORT")) == "" ||
+		strings.TrimSpace(os.Getenv("SMTP_FROM")) == "" {
+		return false
+	}
+	username := strings.TrimSpace(os.Getenv("SMTP_USERNAME"))
+	password := strings.TrimSpace(os.Getenv("SMTP_PASSWORD"))
+	if os.Getenv("APP_ENV") == "production" {
+		return username != "" && password != ""
+	}
+	return (username == "") == (password == "")
+}
+
+func authProviderEnabled(providerName string) bool {
+	var key string
+	switch providerName {
+	case "google":
+		key = "AUTH_GOOGLE_ENABLED"
+	case "telegram":
+		key = "AUTH_TELEGRAM_ENABLED"
+	default:
+		return false
+	}
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return true
+	}
+	enabled, err := strconv.ParseBool(value)
+	return err == nil && enabled
 }
 
 func googleOIDCConfigured() bool {
-	return strings.TrimSpace(os.Getenv("GOOGLE_OIDC_CLIENT_ID")) != "" &&
-		strings.TrimSpace(os.Getenv("GOOGLE_OIDC_CLIENT_SECRET")) != "" &&
-		googleRedirectURL() != ""
+	if !authProviderEnabled("google") {
+		return false
+	}
+	_, err := loadOIDCProviderConfig("google")
+	return err == nil
 }
 
 func telegramOIDCConfigured() bool {
-	return strings.TrimSpace(os.Getenv("TELEGRAM_OIDC_ISSUER")) != "" &&
-		strings.TrimSpace(os.Getenv("TELEGRAM_OIDC_CLIENT_ID")) != "" &&
-		strings.TrimSpace(os.Getenv("TELEGRAM_OIDC_CLIENT_SECRET")) != "" &&
-		telegramRedirectURL() != ""
+	if !authProviderEnabled("telegram") {
+		return false
+	}
+	_, err := loadOIDCProviderConfig("telegram")
+	return err == nil
 }
 
 func googleRedirectURL() string {

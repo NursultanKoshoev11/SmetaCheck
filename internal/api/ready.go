@@ -18,5 +18,15 @@ func Ready(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusServiceUnavailable, "postgresql ping failed")
 		return
 	}
-	estimateWriteJSON(w, http.StatusOK, map[string]any{"ok": true, "service": "api", "ready": true, "database": "postgresql"})
+	if err := databaseSchemaReady(ctx); err != nil {
+		estimateWriteError(w, http.StatusServiceUnavailable, "database schema is not ready")
+		return
+	}
+	estimateWriteJSON(w, http.StatusOK, map[string]any{
+		"ok":             true,
+		"service":        "api",
+		"ready":          true,
+		"database":       "postgresql",
+		"schema_version": currentSchemaVersion,
+	})
 }

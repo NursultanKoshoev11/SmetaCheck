@@ -4,6 +4,25 @@ import Footer from '../components/Footer';
 import {API_BASE,apiJSON,currentUser} from '../lib/api';
 
 const defaultProviders={email_login:true,email_registration:false,password_reset:false,google:false,telegram:false};
+const providerNames={google:'Google',telegram:'Telegram'};
+const oauthErrorMessages={
+  cancelled:'Вход был отменён. Попробуйте ещё раз.',
+  invalid_callback:'Провайдер вернул неполный ответ. Начните вход заново.',
+  invalid_state:'Сессия входа истекла или открыта в другом браузере. Начните вход заново.',
+  provider_unavailable:'Провайдер входа временно недоступен. Попробуйте позже.',
+  service_unavailable:'Сервис авторизации временно недоступен. Попробуйте позже.',
+  exchange_failed:'Не удалось завершить безопасный обмен с провайдером. Попробуйте снова.',
+  invalid_token:'Провайдер вернул недействительные данные авторизации.',
+  email_unverified:'Google-аккаунт должен иметь подтверждённый email.',
+  account_link_failed:'Не удалось создать или связать аккаунт. Обратитесь в поддержку.',
+  session_failed:'Аккаунт подтверждён, но сессию создать не удалось. Попробуйте снова.',
+  internal_error:'Внутренняя ошибка авторизации. Попробуйте позже.'
+};
+
+function safeLocalReturnTo(value){
+  if(!value||value.length>512||!value.startsWith('/')||value.startsWith('//')||value.includes('\\'))return '/dashboard';
+  return value;
+}
 
 export default function Login(){
   const [mode,setMode]=useState('login');
@@ -15,28 +34,38 @@ export default function Login(){
   const [verificationRequired,setVerificationRequired]=useState(false);
   const [providers,setProviders]=useState(defaultProviders);
   const [providersReady,setProvidersReady]=useState(false);
+  const [providerLoading,setProviderLoading]=useState('');
 
   useEffect(()=>{
-    currentUser().then(user=>{if(user)window.location.replace('/dashboard');});
-    apiJSON('/v1/auth/providers').then(({response,data})=>{
-      if(response.ok&&data.providers)setProviders({...defaultProviders,...data.providers});
-    }).finally(()=>setProvidersReady(true));
-
     const params=new URLSearchParams(window.location.search);
-    if(params.get('verified')==='1'){
+    const oauthError=params.get('oauth_error');
+    const oauthProvider=params.get('provider');
+    if(oauthError){
+      const providerLabel=providerNames[oauthProvider]||'Провайдер';
+      setStatus('error');
+      setMessage(`${providerLabel}: ${oauthErrorMessages[oauthError]||'Не удалось выполнить вход. Попробуйте ещё раз.'}`);
+    }else if(params.get('verified')==='1'){
       setStatus('done');
       setMessage('Email подтверждён. Теперь войдите в аккаунт.');
     }
-    if(params.get('oauth_error')){
-      setStatus('error');
-      setMessage(params.get('oauth_error'));
+    if(oauthError||params.has('provider')||params.has('verified')){
+      params.delete('oauth_error');
+      params.delete('provider');
+      params.delete('verified');
+      const cleanQuery=params.toString();
+      window.history.replaceState({},'',`${window.location.pathname}${cleanQuery?`?${cleanQuery}`:''}`);
     }
+
+    currentUser().then(user=>{if(user)window.location.replace('/dashboard');}).catch(()=>{});
+    apiJSON('/v1/auth/providers').then(({response,data})=>{
+      if(response.ok&&data.providers)setProviders({...defaultProviders,...data.providers});
+    }).catch(()=>{}).finally(()=>setProvidersReady(true));
   },[]);
 
   function changeMode(next){
     if(next==='register'&&!providers.email_registration){
       setStatus('error');
-      setMessage('Регистрация по email временно недоступна: почтовый сервис не настроен.');
+      setMessage('Регистрация по email временно недоступна: почтовый сервис не настроен. Используйте Google или Telegram.');
       return;
     }
     if(next==='forgot'&&!providers.password_reset){
@@ -112,15 +141,22 @@ export default function Login(){
   }
 
   function startProvider(provider){
+    if(providerLoading)return;
     if(!providers[provider]){
       setStatus('error');
-      setMessage(provider==='google'?'Вход через Google не настроен.':'Вход через Telegram не настроен.');
+      setMessage(`${providerNames[provider]||'Провайдер'} сейчас не настроен.`);
       return;
     }
-    window.location.href=`${API_BASE}/v1/auth/${provider}?return_to=/dashboard`;
+    const params=new URLSearchParams(window.location.search);
+    const returnTo=safeLocalReturnTo(params.get('return_to'));
+    setProviderLoading(provider);
+    setStatus('loading');
+    setMessage(`Переходим в ${providerNames[provider]} для безопасного входа...`);
+    window.location.assign(`${API_BASE}/v1/auth/${provider}?return_to=${encodeURIComponent(returnTo)}`);
   }
 
   const hasSocial=providers.google||providers.telegram;
+  const busy=status==='loading'||Boolean(providerLoading);
 
   return <main className="page">
     <Nav/>
@@ -128,23 +164,23 @@ export default function Login(){
       <div>
         <p className="eyebrow">Безопасный аккаунт</p>
         <h1>{mode==='register'?'Создайте аккаунт SmetaCheck.':mode==='forgot'?'Восстановите доступ.':'Войдите в кабинет.'}</h1>
-        <p>Вход по email, Google или Telegram. Сессия хранится в защищённых HttpOnly cookies, а не в localStorage.</p>
+        <p>Вход по email, Google или Telegram. При первом входе через Google или Telegram аккаунт создаётся автоматически.</p>
       </div>
-      <form className="authCard" onSubmit={(event)=>{event.preventDefault();submitAuth();}}>
+      <form className="authCard" aria-busy={busy} onSubmit={(event)=>{event.preventDefault();submitAuth();}}>
         {!providersReady&&<p className="statusText loading">Проверяем доступные способы входа...</p>}
-        {providersReady&&hasSocial&&<><div className="socialAuthGrid">
-          {providers.google&&<button className="btn secondary" type="button" onClick={()=>startProvider('google')}>Продолжить с Google</button>}
-          {providers.telegram&&<button className="btn secondary" type="button" onClick={()=>startProvider('telegram')}>Продолжить с Telegram</button>}
+        {providersReady&&hasSocial&&mode!=='forgot'&&<><div className="socialAuthGrid">
+          {providers.google&&<button className="btn secondary" type="button" disabled={busy} onClick={()=>startProvider('google')}>{providerLoading==='google'?'Открываем Google...':'Продолжить с Google'}</button>}
+          {providers.telegram&&<button className="btn secondary" type="button" disabled={busy} onClick={()=>startProvider('telegram')}>{providerLoading==='telegram'?'Открываем Telegram...':'Продолжить с Telegram'}</button>}
         </div><div className="authDivider"><span>или по email</span></div></>}
-        {mode!=='forgot'&&<div className="buttonRow"><button className={mode==='login'?'btn':'btn secondary'} type="button" onClick={()=>changeMode('login')}>Вход</button>{providers.email_registration&&<button className={mode==='register'?'btn':'btn secondary'} type="button" onClick={()=>changeMode('register')}>Регистрация</button>}</div>}
+        {mode!=='forgot'&&<div className="buttonRow"><button className={mode==='login'?'btn':'btn secondary'} type="button" disabled={busy} onClick={()=>changeMode('login')}>Вход</button>{providers.email_registration&&<button className={mode==='register'?'btn':'btn secondary'} type="button" disabled={busy} onClick={()=>changeMode('register')}>Регистрация</button>}</div>}
         {mode==='register'&&<label>Имя<input value={fullName} onChange={(event)=>setFullName(event.target.value)} placeholder="Ваше имя" autoComplete="name" required/></label>}
         <label>Email<input value={email} onChange={(event)=>setEmail(event.target.value)} type="email" placeholder="name@company.com" autoComplete="email" required/></label>
         {mode!=='forgot'&&<label>Пароль<input value={password} onChange={(event)=>setPassword(event.target.value)} type="password" minLength={12} maxLength={128} placeholder="Минимум 12 символов" autoComplete={mode==='login'?'current-password':'new-password'} required/></label>}
-        <button className="btn" type="submit" disabled={status==='loading'}>{status==='loading'?'Подождите...':mode==='forgot'?'Отправить ссылку':mode==='login'?'Войти':'Создать аккаунт'}</button>
+        <button className="btn" type="submit" disabled={busy}>{busy?'Подождите...':mode==='forgot'?'Отправить ссылку':mode==='login'?'Войти':'Создать аккаунт'}</button>
         {message&&<p className={`statusText ${status}`}>{message}</p>}
-        {verificationRequired&&providers.email_registration&&<button type="button" className="btn secondary" onClick={resendVerification}>Отправить письмо ещё раз</button>}
-        {mode==='login'&&providers.password_reset&&<button type="button" className="textAction" onClick={()=>changeMode('forgot')}>Забыли пароль?</button>}
-        {mode==='forgot'&&<button type="button" className="btn secondary" onClick={()=>changeMode('login')}>Вернуться ко входу</button>}
+        {verificationRequired&&providers.email_registration&&<button type="button" className="btn secondary" disabled={busy} onClick={resendVerification}>Отправить письмо ещё раз</button>}
+        {mode==='login'&&providers.password_reset&&<button type="button" className="textAction" disabled={busy} onClick={()=>changeMode('forgot')}>Забыли пароль?</button>}
+        {mode==='forgot'&&<button type="button" className="btn secondary" disabled={busy} onClick={()=>changeMode('login')}>Вернуться ко входу</button>}
       </form>
     </section>
     <Footer/>
