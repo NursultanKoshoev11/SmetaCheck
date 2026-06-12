@@ -11,5 +11,5 @@ func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Printf("environment file was not loaded: %v", err)
 	}
-	api.Run()
+	api.RunHardened()
 }
