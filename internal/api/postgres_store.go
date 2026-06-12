@@ -230,6 +230,59 @@ func pgSaveCompareResult(ctx context.Context, ownerID string, result CompareResp
 	return err
 }
 
+func pgDeleteEstimate(ctx context.Context, ownerID, id string) (string, string, bool, error) {
+	pool, err := getDB(ctx)
+	if err != nil {
+		return "", "", false, err
+	}
+	if pool == nil {
+		return "", "", false, fmt.Errorf("postgresql is not configured")
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return "", "", false, err
+	}
+	defer tx.Rollback(ctx)
+
+	var filePath, reportPath string
+	var sharedWithBatch bool
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(e.file_path,''), COALESCE(e.report_path,''), EXISTS(
+			SELECT 1
+			FROM analysis_batch_files f
+			WHERE f.estimate_id=e.id AND f.file_path=e.file_path AND f.file_path<>''
+		)
+		FROM estimates e
+		WHERE e.id=$1 AND e.owner_id=$2
+		FOR UPDATE
+	`, id, ownerID).Scan(&filePath, &reportPath, &sharedWithBatch)
+	if err == pgx.ErrNoRows {
+		return "", "", false, nil
+	}
+	if err != nil {
+		return "", "", false, err
+	}
+
+	if _, err = tx.Exec(ctx, `DELETE FROM estimates WHERE id=$1 AND owner_id=$2`, id, ownerID); err != nil {
+		return "", "", false, err
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id)
+		VALUES ($1,$2,'estimate.deleted','estimate',$3)
+	`, newDatabaseID("aud"), ownerID, id)
+	if err != nil {
+		return "", "", false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", "", false, err
+	}
+	if sharedWithBatch {
+		filePath = ""
+	}
+	return filePath, reportPath, true, nil
+}
+
 func newDatabaseID(prefix string) string {
 	return prefix + "_" + uuid.NewString()
 }

@@ -3,6 +3,7 @@ package api
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,6 +29,7 @@ func EstimateUploadPostgres(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusBadRequest, "invalid upload form")
 		return
 	}
+	defer cleanupMultipartForm(r)
 
 	file, header, err := r.FormFile("file")
 	if err != nil {
@@ -102,6 +104,18 @@ func EstimateListPostgres(w http.ResponseWriter, r *http.Request) {
 	estimateWriteJSON(w, http.StatusOK, map[string]any{"estimates": estimates})
 }
 
+func EstimateRouterPostgres(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		EstimateDetailRouterPostgres(w, r)
+	case http.MethodDelete:
+		EstimateDeletePostgres(w, r)
+	default:
+		w.Header().Set("Allow", http.MethodGet+", "+http.MethodDelete)
+		estimateWriteError(w, http.StatusMethodNotAllowed, "method not allowed")
+	}
+}
+
 func EstimateDetailRouterPostgres(w http.ResponseWriter, r *http.Request) {
 	user, ok := requireAuthenticatedUser(w, r)
 	if !ok {
@@ -139,6 +153,34 @@ func EstimateDetailRouterPostgres(w http.ResponseWriter, r *http.Request) {
 	estimateWriteError(w, http.StatusNotFound, "endpoint not found")
 }
 
+func EstimateDeletePostgres(w http.ResponseWriter, r *http.Request) {
+	user, ok := requireAuthenticatedUser(w, r)
+	if !ok {
+		return
+	}
+	path := strings.Trim(strings.TrimPrefix(r.URL.Path, "/v1/estimates/"), "/")
+	if path == "" || strings.Contains(path, "/") {
+		estimateWriteError(w, http.StatusNotFound, "estimate not found")
+		return
+	}
+	filePath, reportPath, found, err := pgDeleteEstimate(r.Context(), user.ID, path)
+	if err != nil {
+		estimateWriteError(w, http.StatusInternalServerError, "cannot delete estimate from postgresql")
+		return
+	}
+	if !found {
+		estimateWriteError(w, http.StatusNotFound, "estimate not found")
+		return
+	}
+	if err := removeStoredFileWithinRoot(filePath, estimateUploadDir()); err != nil {
+		log.Printf("estimate file cleanup failed estimate_id=%s err=%v", path, err)
+	}
+	if err := removeStoredFileWithinRoot(reportPath, estimateReportDir()); err != nil {
+		log.Printf("estimate report cleanup failed estimate_id=%s err=%v", path, err)
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func EstimateAISummaryPostgres(w http.ResponseWriter, r *http.Request) {
 	user, ok := requireAuthenticatedUser(w, r)
 	if !ok {
@@ -170,16 +212,22 @@ func EstimateComparePostgres(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusBadRequest, "invalid compare form")
 		return
 	}
+	defer cleanupMultipartForm(r)
+
 	basePath, baseName, baseSize, err := saveCompareFile(r, "base")
 	if err != nil {
 		estimateWriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	defer removeTemporaryFile(basePath)
+
 	newPath, newName, newSize, err := saveCompareFile(r, "new")
 	if err != nil {
 		estimateWriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	defer removeTemporaryFile(newPath)
+
 	baseItems, baseFindings := analyzeEstimateFile(basePath, baseName, baseSize)
 	newItems, newFindings := analyzeEstimateFile(newPath, newName, newSize)
 	result := compareEstimateItems(baseName, newName, baseItems, newItems)

@@ -11,17 +11,17 @@ import (
 )
 
 type CompareResponse struct {
-	ID          string          `json:"id"`
-	CreatedAt   time.Time       `json:"created_at"`
-	BaseFile    string          `json:"base_file"`
-	NewFile     string          `json:"new_file"`
-	BaseTotal   float64         `json:"base_total"`
-	NewTotal    float64         `json:"new_total"`
-	DeltaTotal  float64         `json:"delta_total"`
-	Added       []EstimateItem  `json:"added"`
-	Removed     []EstimateItem  `json:"removed"`
-	Changed     []ChangedItem   `json:"changed"`
-	Findings    []Finding       `json:"findings"`
+	ID         string         `json:"id"`
+	CreatedAt  time.Time      `json:"created_at"`
+	BaseFile   string         `json:"base_file"`
+	NewFile    string         `json:"new_file"`
+	BaseTotal  float64        `json:"base_total"`
+	NewTotal   float64        `json:"new_total"`
+	DeltaTotal float64        `json:"delta_total"`
+	Added      []EstimateItem `json:"added"`
+	Removed    []EstimateItem `json:"removed"`
+	Changed    []ChangedItem  `json:"changed"`
+	Findings   []Finding      `json:"findings"`
 }
 
 type ChangedItem struct {
@@ -38,17 +38,21 @@ func EstimateCompare(w http.ResponseWriter, r *http.Request) {
 		estimateWriteError(w, http.StatusBadRequest, "invalid compare form")
 		return
 	}
+	defer cleanupMultipartForm(r)
 
 	basePath, baseName, baseSize, err := saveCompareFile(r, "base")
 	if err != nil {
 		estimateWriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	defer removeTemporaryFile(basePath)
+
 	newPath, newName, newSize, err := saveCompareFile(r, "new")
 	if err != nil {
 		estimateWriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	defer removeTemporaryFile(newPath)
 
 	baseItems, baseFindings := analyzeEstimateFile(basePath, baseName, baseSize)
 	newItems, newFindings := analyzeEstimateFile(newPath, newName, newSize)
@@ -65,26 +69,38 @@ func saveCompareFile(r *http.Request, field string) (string, string, int64, erro
 	}
 	defer file.Close()
 
-	dir := estimateUploadDir()
-	if err := os.MkdirAll(dir, 0o750); err != nil {
-		return "", "", 0, fmt.Errorf("cannot create upload directory")
-	}
 	fileName := sanitizeFileName(header.Filename)
 	if fileName == "" {
 		fileName = field + "-estimate"
 	}
-	path := filepath.Join(dir, newEstimateID()+"_compare_"+field+"_"+fileName)
-	stored, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o640)
-	if err != nil {
-		return "", "", 0, fmt.Errorf("cannot save %s file", field)
+	extension := strings.ToLower(filepath.Ext(fileName))
+	if len(extension) > 16 {
+		extension = ""
 	}
-	written, copyErr := io.Copy(stored, file)
-	closeErr := stored.Close()
+	temporary, err := os.CreateTemp("", "smetacheck-compare-*"+extension)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("cannot create temporary %s file", field)
+	}
+	path := temporary.Name()
+	written, copyErr := io.Copy(temporary, file)
+	closeErr := temporary.Close()
 	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(path)
 		return "", "", 0, fmt.Errorf("cannot write %s file", field)
 	}
 	return path, fileName, written, nil
+}
+
+func cleanupMultipartForm(r *http.Request) {
+	if r != nil && r.MultipartForm != nil {
+		_ = r.MultipartForm.RemoveAll()
+	}
+}
+
+func removeTemporaryFile(path string) {
+	if strings.TrimSpace(path) != "" {
+		_ = os.Remove(path)
+	}
 }
 
 func compareEstimateItems(baseName, newName string, baseItems, newItems []EstimateItem) CompareResponse {
