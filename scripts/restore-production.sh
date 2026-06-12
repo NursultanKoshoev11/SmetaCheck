@@ -2,11 +2,38 @@
 set -eu
 umask 077
 
+CONFIG_FILE=${BACKUP_CONFIG_FILE:-.env}
+
+read_env_value() {
+  key=$1
+  [ -f "$CONFIG_FILE" ] || return 0
+  awk -v key="$key" '
+    {
+      line=$0
+      sub(/\r$/, "", line)
+      pattern="^[[:space:]]*" key "[[:space:]]*="
+      if (line ~ pattern) {
+        sub(pattern "[[:space:]]*", "", line)
+        first=substr(line,1,1)
+        last=substr(line,length(line),1)
+        if ((first=="\"" && last=="\"") || (first=="\047" && last=="\047")) {
+          line=substr(line,2,length(line)-2)
+        }
+        print line
+        exit
+      }
+    }
+  ' "$CONFIG_FILE"
+}
+
+CONFIG_COMPOSE_PROJECT_NAME=$(read_env_value COMPOSE_PROJECT_NAME)
+CONFIG_ENCRYPTION_PASSWORD_FILE=$(read_env_value BACKUP_ENCRYPTION_PASSWORD_FILE)
+
 COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.production.yml}
-COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-smetacheck}
+COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-${CONFIG_COMPOSE_PROJECT_NAME:-smetacheck}}
 BACKUP_SOURCE=${BACKUP_SOURCE:-}
 RESTORE_CONFIRM=${RESTORE_CONFIRM:-}
-ENCRYPTION_PASSWORD_FILE=${BACKUP_ENCRYPTION_PASSWORD_FILE:-}
+ENCRYPTION_PASSWORD_FILE=${BACKUP_ENCRYPTION_PASSWORD_FILE:-${CONFIG_ENCRYPTION_PASSWORD_FILE:-}}
 
 [ "$RESTORE_CONFIRM" = "RESTORE_SMETACHECK" ] || {
   echo "Set RESTORE_CONFIRM=RESTORE_SMETACHECK to acknowledge this destructive operation" >&2
@@ -21,7 +48,7 @@ test -f "$COMPOSE_FILE" || {
   exit 1
 }
 
-for command_name in docker sha256sum tar; do
+for command_name in docker sha256sum tar awk; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "Required command is missing: $command_name" >&2
     exit 1
