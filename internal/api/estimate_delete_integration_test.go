@@ -11,21 +11,7 @@ import (
 )
 
 func TestEstimateDeletionIsOwnerScoped(t *testing.T) {
-	databaseURL := os.Getenv("TEST_DATABASE_URL")
-	if databaseURL == "" {
-		t.Skip("TEST_DATABASE_URL is not configured")
-	}
-	t.Setenv("DATABASE_URL", databaseURL)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
-	defer cancel()
-	if err := migrateDatabase(ctx); err != nil {
-		t.Fatalf("database migration failed: %v", err)
-	}
-	pool, err := getDB(ctx)
-	if err != nil {
-		t.Fatalf("getDB failed: %v", err)
-	}
+	ctx, pool := integrationDatabase(t)
 
 	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
 	ownerID := "usr_delete_owner_" + suffix
@@ -98,6 +84,104 @@ func TestEstimateDeletionIsOwnerScoped(t *testing.T) {
 	if childStillExists {
 		t.Fatal("estimate child rows were not deleted by cascade")
 	}
+	assertEstimateDeletionAudit(t, ctx, pool, ownerID, estimateID)
+}
+
+func TestDeletingBatchEstimatePreservesBatchOwnedFile(t *testing.T) {
+	ctx, pool := integrationDatabase(t)
+
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ownerID := "usr_batch_delete_" + suffix
+	batchID := "bat_delete_" + suffix
+	batchFileID := "bfl_delete_" + suffix
+	estimateID := "est_batch_delete_" + suffix
+	filePath := "/var/lib/smetacheck/uploads/" + batchFileID + ".xlsx"
+	reportPath := "/var/lib/smetacheck/reports/" + estimateID + ".txt"
+
+	if _, err := pool.Exec(ctx, `INSERT INTO users (id,full_name) VALUES ($1,'Batch owner')`, ownerID); err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		_, _ = pool.Exec(cleanupCtx, `DELETE FROM users WHERE id=$1`, ownerID)
+	})
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO analysis_batches (id,owner_id,provider,model,status,file_count,completed_count,completed_at)
+		VALUES ($1,$2,'rules','rules','completed',1,1,now())
+	`, batchID, ownerID); err != nil {
+		t.Fatalf("insert batch: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO estimates (id,owner_id,file_name,file_path,report_path)
+		VALUES ($1,$2,'batch.xlsx',$3,$4)
+	`, estimateID, ownerID, filePath, reportPath); err != nil {
+		t.Fatalf("insert estimate: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO analysis_batch_files (
+			id,batch_id,file_name,file_path,mime_type,file_size,position,status,estimate_id
+		) VALUES ($1,$2,'batch.xlsx',$3,'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',100,0,'completed',$4)
+	`, batchFileID, batchID, filePath, estimateID); err != nil {
+		t.Fatalf("insert batch file: %v", err)
+	}
+
+	deletedFilePath, deletedReportPath, found, err := pgDeleteEstimate(ctx, ownerID, estimateID)
+	if err != nil {
+		t.Fatalf("delete batch estimate: %v", err)
+	}
+	if !found {
+		t.Fatal("batch estimate was not found")
+	}
+	if deletedFilePath != "" {
+		t.Fatalf("batch-owned upload must be retained for batch cleanup, got %q", deletedFilePath)
+	}
+	if deletedReportPath != reportPath {
+		t.Fatalf("estimate report should still be removed, got %q", deletedReportPath)
+	}
+
+	var retainedPath string
+	var linkedEstimateID *string
+	if err := pool.QueryRow(ctx, `
+		SELECT file_path, estimate_id FROM analysis_batch_files WHERE id=$1
+	`, batchFileID).Scan(&retainedPath, &linkedEstimateID); err != nil {
+		t.Fatalf("load batch file after estimate deletion: %v", err)
+	}
+	if retainedPath != filePath {
+		t.Fatalf("batch file path was changed unexpectedly: %q", retainedPath)
+	}
+	if linkedEstimateID != nil {
+		t.Fatalf("batch file estimate link must be cleared by ON DELETE SET NULL: %v", *linkedEstimateID)
+	}
+	assertEstimateDeletionAudit(t, ctx, pool, ownerID, estimateID)
+}
+
+func integrationDatabase(t *testing.T) (context.Context, interface {
+	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
+	QueryRow(context.Context, string, ...any) pgx.Row
+}) {
+	t.Helper()
+	databaseURL := os.Getenv("TEST_DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("TEST_DATABASE_URL is not configured")
+	}
+	t.Setenv("DATABASE_URL", databaseURL)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	t.Cleanup(cancel)
+	if err := migrateDatabase(ctx); err != nil {
+		t.Fatalf("database migration failed: %v", err)
+	}
+	pool, err := getDB(ctx)
+	if err != nil {
+		t.Fatalf("getDB failed: %v", err)
+	}
+	return ctx, pool
+}
+
+func assertEstimateDeletionAudit(t *testing.T, ctx context.Context, pool interface {
+	QueryRow(context.Context, string, ...any) pgx.Row
+}, ownerID, estimateID string) {
+	t.Helper()
 	var auditExists bool
 	if err := pool.QueryRow(ctx, `
 		SELECT EXISTS(
