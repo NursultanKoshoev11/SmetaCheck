@@ -2,20 +2,55 @@
 set -eu
 umask 077
 
+CONFIG_FILE=${BACKUP_CONFIG_FILE:-.env}
+
+read_env_value() {
+  key=$1
+  [ -f "$CONFIG_FILE" ] || return 0
+  awk -v key="$key" '
+    {
+      line=$0
+      sub(/\r$/, "", line)
+      pattern="^[[:space:]]*" key "[[:space:]]*="
+      if (line ~ pattern) {
+        sub(pattern "[[:space:]]*", "", line)
+        first=substr(line,1,1)
+        last=substr(line,length(line),1)
+        if ((first=="\"" && last=="\"") || (first=="\047" && last=="\047")) {
+          line=substr(line,2,length(line)-2)
+        }
+        print line
+        exit
+      }
+    }
+  ' "$CONFIG_FILE"
+}
+
+CONFIG_COMPOSE_PROJECT_NAME=$(read_env_value COMPOSE_PROJECT_NAME)
+CONFIG_BACKUP_DIR=$(read_env_value BACKUP_DIR)
+CONFIG_RETENTION_DAYS=$(read_env_value BACKUP_RETENTION_DAYS)
+CONFIG_REQUIRE_ENCRYPTION=$(read_env_value BACKUP_REQUIRE_ENCRYPTION)
+CONFIG_ENCRYPTION_PASSWORD_FILE=$(read_env_value BACKUP_ENCRYPTION_PASSWORD_FILE)
+CONFIG_BACKUP_S3_URI=$(read_env_value BACKUP_S3_URI)
+
 COMPOSE_FILE=${COMPOSE_FILE:-docker-compose.production.yml}
-COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-smetacheck}
-BACKUP_DIR=${BACKUP_DIR:-/var/backups/smetacheck}
-RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-14}
-REQUIRE_ENCRYPTION=${BACKUP_REQUIRE_ENCRYPTION:-true}
-ENCRYPTION_PASSWORD_FILE=${BACKUP_ENCRYPTION_PASSWORD_FILE:-}
-BACKUP_S3_URI=${BACKUP_S3_URI:-}
+COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME:-${CONFIG_COMPOSE_PROJECT_NAME:-smetacheck}}
+BACKUP_DIR=${BACKUP_DIR:-${CONFIG_BACKUP_DIR:-/var/backups/smetacheck}}
+RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-${CONFIG_RETENTION_DAYS:-14}}
+REQUIRE_ENCRYPTION=${BACKUP_REQUIRE_ENCRYPTION:-${CONFIG_REQUIRE_ENCRYPTION:-true}}
+ENCRYPTION_PASSWORD_FILE=${BACKUP_ENCRYPTION_PASSWORD_FILE:-${CONFIG_ENCRYPTION_PASSWORD_FILE:-}}
+BACKUP_S3_URI=${BACKUP_S3_URI:-${CONFIG_BACKUP_S3_URI:-}}
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 
 case "$RETENTION_DAYS" in
   ''|*[!0-9]*) echo "BACKUP_RETENTION_DAYS must be a non-negative integer" >&2; exit 1 ;;
 esac
+case "$REQUIRE_ENCRYPTION" in
+  true|false) ;;
+  *) echo "BACKUP_REQUIRE_ENCRYPTION must be true or false" >&2; exit 1 ;;
+esac
 
-for command_name in docker sha256sum tar; do
+for command_name in docker sha256sum tar awk; do
   command -v "$command_name" >/dev/null 2>&1 || {
     echo "Required command is missing: $command_name" >&2
     exit 1
