@@ -1,0 +1,1 @@
+export default function LegalPrivacy(){return <section className="workspace legalDocument" id="privacy"><h1>Privacy Policy</h1><div className="card"><h2>Какие данные собираются</h2><p>Данные аккаунта, загруженные документы, результаты анализа, данные сессий, сведения о тарифе и журналы безопасности.</p></div></section>}
