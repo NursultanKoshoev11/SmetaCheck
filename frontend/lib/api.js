@@ -1,6 +1,9 @@
+import {addDocumentConsent} from './documentConsent';
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:8080';
 
 export async function apiFetch(path, options = {}, retry = true) {
+  addDocumentConsent(options.body);
   const headers = new Headers(options.headers || {});
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
