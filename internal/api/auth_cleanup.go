@@ -6,17 +6,26 @@ import (
 	"time"
 )
 
-func startAuthCleanup() {
+func startAuthCleanup(parent context.Context) {
 	go func() {
+		runCleanup := func() {
+			ctx, cancel := context.WithTimeout(parent, 20*time.Second)
+			defer cancel()
+			if err := cleanupAuthRecords(ctx); err != nil && parent.Err() == nil {
+				log.Printf("auth cleanup failed: %v", err)
+			}
+		}
+
+		runCleanup()
 		ticker := time.NewTicker(30 * time.Minute)
 		defer ticker.Stop()
 		for {
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-			if err := cleanupAuthRecords(ctx); err != nil {
-				log.Printf("auth cleanup failed: %v", err)
+			select {
+			case <-parent.Done():
+				return
+			case <-ticker.C:
+				runCleanup()
 			}
-			cancel()
-			<-ticker.C
 		}
 	}()
 }
