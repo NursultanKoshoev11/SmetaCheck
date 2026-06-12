@@ -1,9 +1,13 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 )
 
@@ -12,7 +16,10 @@ func Run() {
 		log.Fatalf("configuration error: %v", err)
 	}
 	initDatabaseForRun()
-	startAuthCleanup()
+
+	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	startAuthCleanup(rootCtx)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", Health)
@@ -55,6 +62,35 @@ func Run() {
 		IdleTimeout:       envDuration("SERVER_IDLE_TIMEOUT", 60*time.Second),
 		MaxHeaderBytes:    1 << 20,
 	}
-	log.Printf("smetacheck api listening on %s", addr)
-	log.Fatal(server.ListenAndServe())
+
+	serveErr := make(chan error, 1)
+	go func() {
+		log.Printf("smetacheck api listening on %s", addr)
+		serveErr <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serveErr:
+		closeDatabase()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("api server failed: %v", err)
+		}
+	case <-rootCtx.Done():
+		shutdownTimeout := envDuration("SERVER_SHUTDOWN_TIMEOUT", 20*time.Second)
+		if shutdownTimeout < time.Second {
+			shutdownTimeout = 20 * time.Second
+		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		shutdownErr := server.Shutdown(shutdownCtx)
+		cancel()
+		listenerErr := <-serveErr
+		closeDatabase()
+		if shutdownErr != nil {
+			log.Printf("api graceful shutdown failed: %v", shutdownErr)
+		}
+		if listenerErr != nil && !errors.Is(listenerErr, http.ErrServerClosed) {
+			log.Printf("api server stopped with error: %v", listenerErr)
+		}
+		log.Println("smetacheck api stopped")
+	}
 }
