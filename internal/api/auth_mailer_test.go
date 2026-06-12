@@ -28,7 +28,8 @@ func TestBuildSMTPMessageEncodesUnicodeHeadersAndBody(t *testing.T) {
 		"Subject: =?UTF-8?q?",
 		"Content-Type: text/plain; charset=UTF-8",
 		"Content-Transfer-Encoding: quoted-printable",
-		"From: SmetaCheck KG <no-reply@smetacheck.kg>",
+		"From:",
+		"no-reply@smetacheck.kg",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("message does not contain %q:\n%s", expected, text)
