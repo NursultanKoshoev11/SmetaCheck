@@ -47,6 +47,7 @@ func TestProductionDatabaseSchema(t *testing.T) {
 		"audit_logs",
 		"account_storage_usage",
 		"account_usage_monthly",
+		"user_consents",
 		"schema_migrations",
 	}
 	for _, table := range expectedTables {
