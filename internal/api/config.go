@@ -45,6 +45,12 @@ func validateProductionConfig() error {
 	if envInt64("MAX_BATCH_FILES", 10) < 1 || envInt64("MAX_BATCH_FILES", 10) > 50 {
 		return fmt.Errorf("MAX_BATCH_FILES must be between 1 and 50")
 	}
+	if envInt64("MAX_BATCH_TOTAL_MB", 200) < 10 || envInt64("MAX_BATCH_TOTAL_MB", 200) > 500 {
+		return fmt.Errorf("MAX_BATCH_TOTAL_MB must be between 10 and 500")
+	}
+	if envInt64("MAX_COMPARE_TOTAL_MB", 60) < 2 || envInt64("MAX_COMPARE_TOTAL_MB", 60) > 200 {
+		return fmt.Errorf("MAX_COMPARE_TOTAL_MB must be between 2 and 200")
+	}
 	if envInt64("AI_ROWS_PER_CHUNK", 250) < 25 || envInt64("AI_ROWS_PER_CHUNK", 250) > 1000 {
 		return fmt.Errorf("AI_ROWS_PER_CHUNK must be between 25 and 1000")
 	}
