@@ -27,6 +27,8 @@ func setValidProductionEnvironment(t *testing.T) {
 	t.Setenv("AI_PROVIDER", "rules")
 	t.Setenv("MAX_UPLOAD_MB", "25")
 	t.Setenv("MAX_BATCH_FILES", "10")
+	t.Setenv("MAX_BATCH_TOTAL_MB", "200")
+	t.Setenv("MAX_COMPARE_TOTAL_MB", "60")
 	t.Setenv("AI_ROWS_PER_CHUNK", "250")
 }
 
@@ -82,5 +84,21 @@ func TestProductionRejectsExcessiveUploadLimit(t *testing.T) {
 	t.Setenv("MAX_UPLOAD_MB", "101")
 	if err := validateProductionConfig(); err == nil || !strings.Contains(err.Error(), "MAX_UPLOAD_MB") {
 		t.Fatalf("expected upload limit validation error, got %v", err)
+	}
+}
+
+func TestProductionRejectsExcessiveBatchTotalLimit(t *testing.T) {
+	setValidProductionEnvironment(t)
+	t.Setenv("MAX_BATCH_TOTAL_MB", "501")
+	if err := validateProductionConfig(); err == nil || !strings.Contains(err.Error(), "MAX_BATCH_TOTAL_MB") {
+		t.Fatalf("expected batch total limit validation error, got %v", err)
+	}
+}
+
+func TestProductionRejectsExcessiveCompareTotalLimit(t *testing.T) {
+	setValidProductionEnvironment(t)
+	t.Setenv("MAX_COMPARE_TOTAL_MB", "201")
+	if err := validateProductionConfig(); err == nil || !strings.Contains(err.Error(), "MAX_COMPARE_TOTAL_MB") {
+		t.Fatalf("expected compare total limit validation error, got %v", err)
 	}
 }
