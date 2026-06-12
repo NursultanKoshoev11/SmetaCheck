@@ -8,6 +8,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func TestEstimateDeletionIsOwnerScoped(t *testing.T) {
@@ -156,10 +158,7 @@ func TestDeletingBatchEstimatePreservesBatchOwnedFile(t *testing.T) {
 	assertEstimateDeletionAudit(t, ctx, pool, ownerID, estimateID)
 }
 
-func integrationDatabase(t *testing.T) (context.Context, interface {
-	Exec(context.Context, string, ...any) (pgconn.CommandTag, error)
-	QueryRow(context.Context, string, ...any) pgx.Row
-}) {
+func integrationDatabase(t *testing.T) (context.Context, *pgxpool.Pool) {
 	t.Helper()
 	databaseURL := os.Getenv("TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -178,9 +177,7 @@ func integrationDatabase(t *testing.T) (context.Context, interface {
 	return ctx, pool
 }
 
-func assertEstimateDeletionAudit(t *testing.T, ctx context.Context, pool interface {
-	QueryRow(context.Context, string, ...any) pgx.Row
-}, ownerID, estimateID string) {
+func assertEstimateDeletionAudit(t *testing.T, ctx context.Context, pool *pgxpool.Pool, ownerID, estimateID string) {
 	t.Helper()
 	var auditExists bool
 	if err := pool.QueryRow(ctx, `
