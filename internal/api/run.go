@@ -47,7 +47,7 @@ func Run() {
 	mux.HandleFunc("/v1/estimates", requireMethod(http.MethodGet, EstimateListPostgres))
 	mux.HandleFunc("/v1/estimates/upload", requireMethod(http.MethodPost, EstimateUploadPostgres))
 	mux.HandleFunc("/v1/estimates/compare", requireMethod(http.MethodPost, EstimateComparePostgres))
-	mux.HandleFunc("/v1/estimates/", requireMethod(http.MethodGet, EstimateDetailRouterPostgres))
+	mux.HandleFunc("/v1/estimates/", EstimateRouterPostgres)
 
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
