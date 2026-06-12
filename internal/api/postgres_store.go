@@ -230,6 +230,47 @@ func pgSaveCompareResult(ctx context.Context, ownerID string, result CompareResp
 	return err
 }
 
+func pgDeleteEstimate(ctx context.Context, ownerID, id string) (string, string, bool, error) {
+	pool, err := getDB(ctx)
+	if err != nil {
+		return "", "", false, err
+	}
+	if pool == nil {
+		return "", "", false, fmt.Errorf("postgresql is not configured")
+	}
+
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return "", "", false, err
+	}
+	defer tx.Rollback(ctx)
+
+	var filePath, reportPath string
+	err = tx.QueryRow(ctx, `
+		DELETE FROM estimates
+		WHERE id=$1 AND owner_id=$2
+		RETURNING COALESCE(file_path,''), COALESCE(report_path,'')
+	`, id, ownerID).Scan(&filePath, &reportPath)
+	if err == pgx.ErrNoRows {
+		return "", "", false, nil
+	}
+	if err != nil {
+		return "", "", false, err
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO audit_logs (id, user_id, action, resource_type, resource_id)
+		VALUES ($1,$2,'estimate.deleted','estimate',$3)
+	`, newDatabaseID("aud"), ownerID, id)
+	if err != nil {
+		return "", "", false, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", "", false, err
+	}
+	return filePath, reportPath, true, nil
+}
+
 func newDatabaseID(prefix string) string {
 	return prefix + "_" + uuid.NewString()
 }
