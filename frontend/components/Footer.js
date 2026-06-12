@@ -8,6 +8,8 @@ export default function Footer(){
       <div className="footerLinks">
         <a href="/upload">Проверить смету</a>
         <a href="/reports">Отчёты</a>
+        <a href="/legal#privacy">Privacy Policy</a>
+        <a href="/legal#terms">Terms of Service</a>
         <a href="/support">Связаться</a>
       </div>
     </footer>
