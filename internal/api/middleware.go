@@ -49,16 +49,31 @@ func cors(next http.Handler) http.Handler {
 
 func maxBodyBytes(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		perFile := envInt64("MAX_UPLOAD_MB", 25) * 1024 * 1024
-		maxBytes := perFile
+		const megabyte = int64(1024 * 1024)
+		perFile := envInt64("MAX_UPLOAD_MB", 25) * megabyte
+		maxBytes := megabyte
 		switch r.URL.Path {
+		case "/v1/estimates/upload":
+			maxBytes = perFile + megabyte
 		case "/v1/analysis-batches":
 			files := envInt64("MAX_BATCH_FILES", 10)
-			if files < 1 { files = 1 }
-			if files > 50 { files = 50 }
-			maxBytes = perFile*files + files*1024*1024
+			if files < 1 {
+				files = 1
+			}
+			if files > 50 {
+				files = 50
+			}
+			maxBytes = perFile*files + files*megabyte
+			totalLimit := envInt64("MAX_BATCH_TOTAL_MB", 200) * megabyte
+			if totalLimit > 0 && maxBytes > totalLimit {
+				maxBytes = totalLimit
+			}
 		case "/v1/estimates/compare":
-			maxBytes = perFile*2 + 2*1024*1024
+			maxBytes = perFile*2 + 2*megabyte
+			totalLimit := envInt64("MAX_COMPARE_TOTAL_MB", 60) * megabyte
+			if totalLimit > 0 && maxBytes > totalLimit {
+				maxBytes = totalLimit
+			}
 		}
 		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 		next.ServeHTTP(w, r)
@@ -80,10 +95,29 @@ func recoverPanic(next http.Handler) http.Handler {
 func requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
-		if requestID == "" { requestID = newRequestID() }
+		if !validRequestID(requestID) {
+			requestID = newRequestID()
+		}
 		w.Header().Set("X-Request-ID", requestID)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func validRequestID(value string) bool {
+	if len(value) < 1 || len(value) > 128 {
+		return false
+	}
+	for index := 0; index < len(value); index++ {
+		character := value[index]
+		if (character >= 'a' && character <= 'z') ||
+			(character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') ||
+			character == '-' || character == '_' || character == '.' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func requireMethod(method string, handler http.HandlerFunc) http.HandlerFunc {
@@ -101,13 +135,17 @@ func parseAllowedOrigins(value string) map[string]bool {
 	allowed := make(map[string]bool)
 	for _, rawOrigin := range strings.Split(value, ",") {
 		origin := strings.TrimSpace(rawOrigin)
-		if origin != "" { allowed[origin] = true }
+		if origin != "" {
+			allowed[origin] = true
+		}
 	}
 	return allowed
 }
 
 func newRequestID() string {
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil { return "unknown" }
-	return hex.EncodeToString(buf)
+	buffer := make([]byte, 16)
+	if _, err := rand.Read(buffer); err != nil {
+		return "unknown"
+	}
+	return hex.EncodeToString(buffer)
 }

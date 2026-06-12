@@ -2,6 +2,9 @@ package api
 
 import (
 	"fmt"
+	"net"
+	"net/mail"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -36,16 +39,34 @@ func validateProductionConfig() error {
 	if keyName != "" && strings.TrimSpace(os.Getenv(keyName)) == "" {
 		return fmt.Errorf("%s must be set when AI_PROVIDER=%s", keyName, provider)
 	}
+	if envInt64("MAX_UPLOAD_MB", 25) < 1 || envInt64("MAX_UPLOAD_MB", 25) > 100 {
+		return fmt.Errorf("MAX_UPLOAD_MB must be between 1 and 100")
+	}
 	if envInt64("MAX_BATCH_FILES", 10) < 1 || envInt64("MAX_BATCH_FILES", 10) > 50 {
 		return fmt.Errorf("MAX_BATCH_FILES must be between 1 and 50")
 	}
+	if envInt64("MAX_BATCH_TOTAL_MB", 200) < 10 || envInt64("MAX_BATCH_TOTAL_MB", 200) > 500 {
+		return fmt.Errorf("MAX_BATCH_TOTAL_MB must be between 10 and 500")
+	}
+	if envInt64("MAX_COMPARE_TOTAL_MB", 60) < 2 || envInt64("MAX_COMPARE_TOTAL_MB", 60) > 200 {
+		return fmt.Errorf("MAX_COMPARE_TOTAL_MB must be between 2 and 200")
+	}
 	if envInt64("AI_ROWS_PER_CHUNK", 250) < 25 || envInt64("AI_ROWS_PER_CHUNK", 250) > 1000 {
 		return fmt.Errorf("AI_ROWS_PER_CHUNK must be between 25 and 1000")
+	}
+	if envInt64("DATABASE_MAX_CONNS", 10) < 2 || envInt64("DATABASE_MAX_CONNS", 10) > 100 {
+		return fmt.Errorf("DATABASE_MAX_CONNS must be between 2 and 100")
+	}
+	if envInt64("DATABASE_MIN_CONNS", 1) < 0 || envInt64("DATABASE_MIN_CONNS", 1) > envInt64("DATABASE_MAX_CONNS", 10) {
+		return fmt.Errorf("DATABASE_MIN_CONNS must be between 0 and DATABASE_MAX_CONNS")
 	}
 	if err := validateOptionalDuration("OAUTH_HTTP_TIMEOUT", 2*time.Second, 60*time.Second); err != nil {
 		return err
 	}
 	if err := validateOptionalDuration("OAUTH_STATE_TTL", 2*time.Minute, 30*time.Minute); err != nil {
+		return err
+	}
+	if err := validateOptionalDuration("SERVER_SHUTDOWN_TIMEOUT", time.Second, 2*time.Minute); err != nil {
 		return err
 	}
 	if err := validateOptionalBoolean("AUTH_GOOGLE_ENABLED"); err != nil {
@@ -99,14 +120,28 @@ func validateProductionConfig() error {
 	if len(jwtSecret) < 64 {
 		return fmt.Errorf("JWT_SECRET must be at least 64 characters in production")
 	}
-	if !strings.HasPrefix(strings.TrimSpace(os.Getenv("PUBLIC_BASE_URL")), "https://") {
-		return fmt.Errorf("PUBLIC_BASE_URL must use https in production")
+	if err := validateProductionBaseURL("PUBLIC_BASE_URL"); err != nil {
+		return err
 	}
-	if !strings.HasPrefix(strings.TrimSpace(os.Getenv("API_PUBLIC_BASE_URL")), "https://") {
-		return fmt.Errorf("API_PUBLIC_BASE_URL must use https in production")
+	if err := validateProductionBaseURL("API_PUBLIC_BASE_URL"); err != nil {
+		return err
 	}
-	if mode := strings.ToLower(strings.TrimSpace(os.Getenv("SMTP_TLS_MODE"))); mode != "" && mode != "starttls" && mode != "implicit" && mode != "none" {
-		return fmt.Errorf("SMTP_TLS_MODE must be starttls, implicit or none")
+	if err := validateProductionOrigins(os.Getenv("ALLOWED_ORIGINS")); err != nil {
+		return err
+	}
+	cookieSecure, err := strconv.ParseBool(strings.TrimSpace(os.Getenv("COOKIE_SECURE")))
+	if err != nil || !cookieSecure {
+		return fmt.Errorf("COOKIE_SECURE must be true in production")
+	}
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("SMTP_TLS_MODE")))
+	if mode == "" {
+		mode = "starttls"
+	}
+	if mode != "starttls" && mode != "implicit" {
+		return fmt.Errorf("SMTP_TLS_MODE must be starttls or implicit in production")
+	}
+	if _, err := mail.ParseAddress(strings.TrimSpace(os.Getenv("SMTP_FROM"))); err != nil {
+		return fmt.Errorf("SMTP_FROM must be a valid email address")
 	}
 	return nil
 }
@@ -123,6 +158,60 @@ func validateRequiredProductionValue(key string) error {
 		}
 	}
 	return nil
+}
+
+func validateProductionBaseURL(key string) error {
+	value := strings.TrimSpace(os.Getenv(key))
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+		return fmt.Errorf("%s must be an absolute https URL", key)
+	}
+	if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+		return fmt.Errorf("%s must contain only an https origin", key)
+	}
+	if isLocalHostname(parsed.Hostname()) {
+		return fmt.Errorf("%s cannot use a local address in production", key)
+	}
+	return nil
+}
+
+func validateProductionOrigins(value string) error {
+	seen := 0
+	for _, rawOrigin := range strings.Split(value, ",") {
+		origin := strings.TrimSpace(rawOrigin)
+		if origin == "" {
+			continue
+		}
+		seen++
+		if origin == "*" || strings.Contains(origin, "*") {
+			return fmt.Errorf("ALLOWED_ORIGINS cannot contain wildcards in production")
+		}
+		parsed, err := url.Parse(origin)
+		if err != nil || parsed.Scheme != "https" || parsed.Host == "" {
+			return fmt.Errorf("ALLOWED_ORIGINS entries must be absolute https origins")
+		}
+		if parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Path != "" && parsed.Path != "/") {
+			return fmt.Errorf("ALLOWED_ORIGINS entries cannot contain paths, credentials, queries or fragments")
+		}
+		if isLocalHostname(parsed.Hostname()) {
+			return fmt.Errorf("ALLOWED_ORIGINS cannot contain local addresses in production")
+		}
+	}
+	if seen == 0 {
+		return fmt.Errorf("ALLOWED_ORIGINS must contain at least one production origin")
+	}
+	return nil
+}
+
+func isLocalHostname(hostname string) bool {
+	hostname = strings.ToLower(strings.TrimSpace(hostname))
+	if hostname == "localhost" || strings.HasSuffix(hostname, ".localhost") {
+		return true
+	}
+	if address := net.ParseIP(hostname); address != nil {
+		return address.IsLoopback() || address.IsUnspecified() || address.IsPrivate()
+	}
+	return false
 }
 
 func validateOptionalBoolean(key string) error {
