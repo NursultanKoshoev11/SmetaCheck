@@ -15,7 +15,7 @@ import (
 
 const (
 	databaseMigrationLockKey int64 = 0x534d45544143484b
-	currentSchemaVersion     int64 = 2026061202
+	currentSchemaVersion     int64 = 2026061203
 )
 
 //go:embed schema.sql
