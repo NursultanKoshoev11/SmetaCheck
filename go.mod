@@ -4,6 +4,7 @@ go 1.23
 
 require (
 	github.com/coreos/go-oidc/v3 v3.12.0
+	github.com/extrame/xls v0.0.1
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.7.1
@@ -14,6 +15,7 @@ require (
 )
 
 require (
+	github.com/extrame/ole2 v0.0.0-20160812065207-d69429661ad7 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

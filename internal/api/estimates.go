@@ -15,6 +15,7 @@ import (
 	"time"
 	"unicode"
 
+	xls "github.com/extrame/xls"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -76,12 +77,14 @@ func analyzeEstimateFile(path string, fileName string, size int64) ([]EstimateIt
 	var rows [][]string
 	var err error
 	switch {
+	case strings.HasSuffix(lowerName, ".xls"):
+		rows, err = readXLSRows(path)
 	case strings.HasSuffix(lowerName, ".csv"):
 		rows, err = readCSVRows(path)
 	case strings.HasSuffix(lowerName, ".pdf"):
 		return nil, append(findings, Finding{Title: "PDF передан AI", Severity: "Info", Detail: "Backend не извлекает таблицу из PDF; исходный документ анализируется выбранной AI-моделью."})
 	default:
-		return nil, append(findings, Finding{Title: "Неподдерживаемый формат", Severity: "High", Detail: "Используйте XLSX, XLSM, CSV или PDF."})
+		return nil, append(findings, Finding{Title: "Неподдерживаемый формат", Severity: "High", Detail: "Используйте XLS, XLSX, XLSM, CSV или PDF."})
 	}
 	if err != nil {
 		return nil, append(findings, Finding{Title: "Ошибка чтения файла", Severity: "High", Detail: err.Error()})
@@ -181,6 +184,56 @@ func finalizeAnalyzedItems(items []EstimateItem, findings []Finding) ([]Estimate
 	return items, findings
 }
 
+func readXLSRows(path string) ([][]string, error) {
+	workbook, err := xls.Open(path, "utf-8")
+	if err != nil {
+		return nil, fmt.Errorf("read XLS workbook: %w", err)
+	}
+	maxSheets := int(envInt64("MAX_EXCEL_SHEETS", 50))
+	if maxSheets < 1 {
+		maxSheets = 1
+	}
+	if maxSheets > 200 {
+		maxSheets = 200
+	}
+	maxRows := int(envInt64("MAX_EXCEL_ROWS_PER_SHEET", 100000))
+	if maxRows < 100 {
+		maxRows = 100
+	}
+	if maxRows > 500000 {
+		maxRows = 500000
+	}
+	rows := make([][]string, 0)
+	for sheetIndex := 0; sheetIndex < workbook.NumSheets(); sheetIndex++ {
+		if sheetIndex >= maxSheets {
+			break
+		}
+		sheet := workbook.GetSheet(sheetIndex)
+		if sheet == nil {
+			continue
+		}
+		for rowIndex := 0; rowIndex <= int(sheet.MaxRow); rowIndex++ {
+			if rowIndex >= maxRows {
+				break
+			}
+			row := sheet.Row(rowIndex)
+			if row == nil {
+				continue
+			}
+			lastCol := row.LastCol()
+			values := make([]string, 0, lastCol)
+			for colIndex := 0; colIndex < lastCol; colIndex++ {
+				values = append(values, strings.TrimSpace(row.Col(colIndex)))
+			}
+			rows = append(rows, values)
+		}
+		if sheetIndex+1 < workbook.NumSheets() {
+			rows = append(rows, []string{})
+		}
+	}
+	return rows, nil
+}
+
 func readCSVRows(path string) ([][]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -230,11 +283,21 @@ func detectColumns(rows [][]string) (int, columnMap) {
 			}
 		}
 		score := 0
-		if candidate.Name >= 0 { score++ }
-		if candidate.Unit >= 0 { score++ }
-		if candidate.Quantity >= 0 { score++ }
-		if candidate.UnitPrice >= 0 { score++ }
-		if candidate.Total >= 0 { score++ }
+		if candidate.Name >= 0 {
+			score++
+		}
+		if candidate.Unit >= 0 {
+			score++
+		}
+		if candidate.Quantity >= 0 {
+			score++
+		}
+		if candidate.UnitPrice >= 0 {
+			score++
+		}
+		if candidate.Total >= 0 {
+			score++
+		}
 		if score > bestScore {
 			bestScore = score
 			bestRow = i
@@ -339,38 +402,50 @@ func scoreFromFindings(findings []Finding) int {
 			score -= 6
 		}
 	}
-	if score < 0 { return 0 }
+	if score < 0 {
+		return 0
+	}
 	return score
 }
 
 func estimateStatus(findings []Finding) string {
 	for _, finding := range findings {
-		if strings.EqualFold(finding.Severity, "High") { return "review_required" }
+		if strings.EqualFold(finding.Severity, "High") {
+			return "review_required"
+		}
 	}
 	return "ready"
 }
 
 func sumItemsTotal(items []EstimateItem) float64 {
 	var total float64
-	for _, item := range items { total += item.Total }
+	for _, item := range items {
+		total += item.Total
+	}
 	return total
 }
 
 func normalizeHeader(value string) string {
 	value = strings.ToLower(strings.TrimSpace(value))
-	for _, old := range []string{" ", "-", "_", "."} { value = strings.ReplaceAll(value, old, "") }
+	for _, old := range []string{" ", "-", "_", "."} {
+		value = strings.ReplaceAll(value, old, "")
+	}
 	return value
 }
 
 func containsAny(value string, needles ...string) bool {
 	for _, needle := range needles {
-		if strings.Contains(value, needle) { return true }
+		if strings.Contains(value, needle) {
+			return true
+		}
 	}
 	return false
 }
 
 func cell(row []string, index int) string {
-	if index < 0 || index >= len(row) { return "" }
+	if index < 0 || index >= len(row) {
+		return ""
+	}
 	return strings.TrimSpace(row[index])
 }
 
@@ -406,7 +481,9 @@ func parseNumber(value string) float64 {
 		}
 	}
 	parsed, err := strconv.ParseFloat(value, 64)
-	if err != nil { return 0 }
+	if err != nil {
+		return 0
+	}
 	return parsed
 }
 
@@ -421,18 +498,26 @@ func normalizeDuplicateKey(name, unit string) string {
 		name = name[separator+len(" · "):]
 	}
 	unit = strings.ToLower(strings.TrimSpace(unit))
-	if len(name) < 4 { return "" }
-	for _, old := range []string{",", ".", ";", ":", "-", "_", "  "} { name = strings.ReplaceAll(name, old, " ") }
+	if len(name) < 4 {
+		return ""
+	}
+	for _, old := range []string{",", ".", ";", ":", "-", "_", "  "} {
+		name = strings.ReplaceAll(name, old, " ")
+	}
 	return strings.Join(strings.Fields(name), " ") + "|" + unit
 }
 
 func estimateUploadDir() string {
-	if value := strings.TrimSpace(os.Getenv("UPLOAD_DIR")); value != "" { return value }
+	if value := strings.TrimSpace(os.Getenv("UPLOAD_DIR")); value != "" {
+		return value
+	}
 	return filepath.Join(os.TempDir(), "smetacheck", "uploads")
 }
 
 func estimateReportDir() string {
-	if value := strings.TrimSpace(os.Getenv("REPORT_DIR")); value != "" { return value }
+	if value := strings.TrimSpace(os.Getenv("REPORT_DIR")); value != "" {
+		return value
+	}
 	return filepath.Join(os.TempDir(), "smetacheck", "reports")
 }
 
@@ -450,7 +535,9 @@ func sanitizeFileName(name string) string {
 
 func newEstimateID() string {
 	buf := make([]byte, 12)
-	if _, err := rand.Read(buf); err != nil { return fmt.Sprintf("est_%d", time.Now().UnixNano()) }
+	if _, err := rand.Read(buf); err != nil {
+		return fmt.Sprintf("est_%d", time.Now().UnixNano())
+	}
 	return "est_" + hex.EncodeToString(buf)
 }
 

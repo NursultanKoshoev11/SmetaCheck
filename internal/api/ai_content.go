@@ -86,7 +86,7 @@ func mergeAIFileAnalyses(estimate Estimate, chunks []AIFileAnalysis, inputMode s
 		RiskLevel:        "Низкий",
 		DataQualityScore: 100,
 		Findings:         make([]AIProviderFinding, 0),
-		Recommendations: make([]string, 0),
+		Recommendations:  make([]string, 0),
 		InputMode:        inputMode,
 	}
 	seenFindings := map[string]struct{}{}
@@ -196,6 +196,8 @@ func estimateMIMEType(fileName string) string {
 	switch {
 	case strings.HasSuffix(lower, ".pdf"):
 		return "application/pdf"
+	case strings.HasSuffix(lower, ".xls"):
+		return "application/vnd.ms-excel"
 	case strings.HasSuffix(lower, ".xlsx"):
 		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	case strings.HasSuffix(lower, ".xlsm"):
