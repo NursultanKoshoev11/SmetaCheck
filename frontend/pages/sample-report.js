@@ -20,7 +20,7 @@ export default function SampleReport(){
       <article className="card"><h2>Замечания</h2><div className="reportTable"><table className="dataTable"><thead><tr><th>Риск</th><th>Строка</th><th>Проблема</th><th>Пояснение</th></tr></thead><tbody>{findings.map(row=><tr key={row[1]+row[2]}>{row.map(value=><td key={value}>{value}</td>)}</tr>)}</tbody></table></div></article>
       <article className="card"><h2>Вопросы подрядчику</h2><ul><li>Почему итог по строке 8 выше математического расчёта на 12 000 сом?</li><li>Строки 12 и 19 относятся к разным этапам, поставкам или это повтор?</li><li>В какой единице измеряется гидроизоляция и как рассчитан объём?</li><li>Каким предложением или расчётом подтверждена крупная позиция?</li></ul></article>
       <article className="card"><h2>Как читать оценку</h2><p>Оценка показывает качество структуры файла и количество автоматических замечаний. Высокая оценка не подтверждает рыночную стоимость, качество работ или соответствие нормативам.</p><a className="btn secondary" href="/methodology">Открыть методику</a></article>
-      <section className="marketingCta"><h2>Получите такой отчёт по своей смете.</h2><p>Для приватной загрузки и сохранения истории потребуется аккаунт.</p><div className="ugActions"><a className="btn" href="/upload">Загрузить смету</a><a className="btn secondary" href="/pricing">Посмотреть тарифы</a></div></section>
+      <section className="marketingCta"><h2>Получите такой отчёт по своей смете.</h2><p>Для приватной загрузки и сохранения истории потребуется аккаунт.</p><div className="ugActions"><a className="btn" href="/upload">Загрузить смету</a></div></section>
     </section>
     <Footer/>
   </main>

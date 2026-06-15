@@ -1,2 +1,0 @@
-import Nav from '../components/Nav';
-export default function Billing(){return <main className="page"><Nav/><section className="panel"><p className="eyebrow">Billing</p><h1>Subscription center</h1><p>Manage plan, usage limits and payment history.</p><div className="grid"><div className="card"><b>Current plan</b><span>Pro</span></div><div className="card"><b>Files</b><span>0 / 50</span></div><div className="card"><b>Status</b><span>Not connected</span></div></div></section></main>}

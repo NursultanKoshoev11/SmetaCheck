@@ -13,11 +13,11 @@ import (
 func TestSaveCompareFileUsesProtectedTemporaryStorage(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
-	part, err := writer.CreateFormFile("base", "estimate.xlsx")
+	part, err := writer.CreateFormFile("base", "estimate.csv")
 	if err != nil {
 		t.Fatalf("create multipart file: %v", err)
 	}
-	if _, err := part.Write([]byte("test workbook content")); err != nil {
+	if _, err := part.Write([]byte("name,total\nitem,100")); err != nil {
 		t.Fatalf("write multipart file: %v", err)
 	}
 	if err := writer.Close(); err != nil {
@@ -37,10 +37,10 @@ func TestSaveCompareFileUsesProtectedTemporaryStorage(t *testing.T) {
 	}
 	defer removeTemporaryFile(path)
 
-	if name != "estimate.xlsx" {
+	if name != "estimate.csv" {
 		t.Fatalf("unexpected sanitized name: %q", name)
 	}
-	if size != int64(len("test workbook content")) {
+	if size != int64(len("name,total\nitem,100")) {
 		t.Fatalf("unexpected stored size: %d", size)
 	}
 	absoluteTemp, err := filepath.Abs(os.TempDir())
@@ -55,7 +55,7 @@ func TestSaveCompareFileUsesProtectedTemporaryStorage(t *testing.T) {
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		t.Fatalf("compare input was not stored in the temporary directory: %q", path)
 	}
-	if filepath.Ext(path) != ".xlsx" {
+	if filepath.Ext(path) != ".csv" {
 		t.Fatalf("temporary file must retain the safe extension, got %q", path)
 	}
 	info, err := os.Stat(path)

@@ -25,7 +25,6 @@ export default function Nav(){
       {user&&<a href="/upload">Новая проверка</a>}
       {user&&<a href="/reports">Отчёты</a>}
       {user&&<a href="/compare">Сравнение</a>}
-      <a href="/pricing">Тарифы</a>
       <a href="/support">Связаться</a>
     </div>
     {!ready?<span className="navAction">...</span>:user?<button className="navAction" type="button" onClick={signOut}>Выйти</button>:<a className="navAction" href="/login">Войти</a>}

@@ -1,8 +1,18 @@
 package tgbot
 
-import "log"
+import (
+	"context"
+	"log"
+	"os"
+	"os/signal"
+	"syscall"
+)
 
-func Run(){
- log.Println("smetacheck telegram bot started")
- select{}
+func Run() {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	log.Println("smetacheck telegram bot started")
+	<-ctx.Done()
+	log.Println("smetacheck telegram bot stopped")
 }
