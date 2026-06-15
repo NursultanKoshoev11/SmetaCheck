@@ -96,7 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build API image
-        run: docker build -t smetacheck-api:security .
+        run: docker build -f Dockerfile.api -t smetacheck-api:security .
       - uses: aquasecurity/trivy-action@0.30.0
         with:
           image-ref: smetacheck-api:security
