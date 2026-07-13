@@ -1,0 +1,42 @@
+name: Crypto Analyzer CI
+
+on:
+  push:
+    paths:
+      - "crypto-analyzer/**"
+      - ".github/workflows/crypto-analyzer.yml"
+  pull_request:
+    paths:
+      - "crypto-analyzer/**"
+      - ".github/workflows/crypto-analyzer.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crypto-analyzer
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache-dependency-path: crypto-analyzer/go.sum
+      - run: go mod download
+      - run: gofmt -w cmd internal migrations && git diff --exit-code
+      - run: go test ./...
+      - run: go vet ./...
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: crypto-analyzer
+          push: false
+          tags: crypto-pattern-analyzer:ci
