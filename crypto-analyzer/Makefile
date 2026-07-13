@@ -7,7 +7,7 @@ build:
 	go build -o bin/crypto-analyzer ./cmd/analyzer
 
 format:
-	gofmt -w cmd internal migrations
+	gofmt -w $$(find cmd internal migrations -name '*.go')
 
 up:
 	docker compose up -d --build
