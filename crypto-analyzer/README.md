@@ -157,7 +157,7 @@ PostgreSQL наружу не публикуется. Доступ к нему е
 ## Проверки разработки
 
 ```bash
-gofmt -w cmd internal migrations
+gofmt -w $(find cmd internal migrations -name '*.go')
 go test ./...
 go vet ./...
 docker compose config
